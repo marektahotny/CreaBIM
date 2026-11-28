@@ -588,10 +588,12 @@ pub fn label_tags(model: &Model) -> (Vec<creabim_core::Element>, Vec<ElementId>)
     let mut add = vec![];
     let mut used = std::collections::HashSet::new();
     for (view, level, cut, structural, mm) in &plans {
-        for c in &all {
-            let Some(s) = shown(model, c, *level, *cut, *structural) else {
-                continue;
-            };
+        let here: Vec<(&Crossing, Shown)> = all
+            .iter()
+            .filter_map(|c| Some((c, shown(model, c, *level, *cut, *structural)?)))
+            .collect();
+        let homes = spread(&here.iter().map(|(_, s)| s).collect::<Vec<_>>(), *mm);
+        for ((c, s), home) in here.into_iter().zip(homes) {
             match tags
                 .iter()
                 .find(|(_, t)| t.view == *view && labels(t, c, s.anchor))
@@ -600,7 +602,7 @@ pub fn label_tags(model: &Model) -> (Vec<creabim_core::Element>, Vec<ElementId>)
                     used.insert(*id);
                 }
                 None => {
-                    let mut t = creabim_core::Tag::new(*view, c.pipe, s.home * *mm);
+                    let mut t = creabim_core::Tag::new(*view, c.pipe, home * *mm);
                     t.end = Some(s.anchor);
                     add.push(creabim_core::Element::new(
                         "Penetration label",
@@ -617,6 +619,34 @@ pub fn label_tags(model: &Model) -> (Vec<creabim_core::Element>, Vec<ElementId>)
         .map(|(id, _)| *id)
         .collect();
     (add, stale)
+}
+
+/// Where the labels of the penetrations `shown` in one plan sit by
+/// themselves, paper mm from each one's middle: where it would sit, moved
+/// up a line at a time while it would lie on a label placed before it
+/// (two pipes through a ceiling side by side wrote one label over the
+/// other).
+fn spread(shown: &[&Shown], mm: f64) -> Vec<DVec2> {
+    const LINE: f64 = 3.5;
+    let mut placed: Vec<(DVec2, f64)> = vec![];
+    let mut out = vec![];
+    for s in shown {
+        let w = crate::paper::text_width(&s.label, SIZE);
+        let mut home = s.home;
+        for _ in 0..20 {
+            let at = s.anchor / mm + home;
+            let hit = placed.iter().any(|(p, pw)| {
+                (p.y - at.y).abs() < LINE - 1e-6 && (p.x - at.x).abs() < (pw + w) / 2.0
+            });
+            if !hit {
+                break;
+            }
+            home.y += LINE;
+        }
+        placed.push((s.anchor / mm + home, w));
+        out.push(home);
+    }
+    out
 }
 
 /// The trades' penetrations in floor plan `view` of `level` cut at
@@ -644,10 +674,15 @@ pub fn plan_items(
         })
         .collect();
     let mut out = vec![];
-    for c in crossings(model) {
-        let Some(s) = shown(model, &c, level, cut_height, structural) else {
-            continue;
-        };
+    let all: Vec<(Crossing, Shown)> = crossings(model)
+        .into_iter()
+        .filter_map(|c| {
+            let s = shown(model, &c, level, cut_height, structural)?;
+            Some((c, s))
+        })
+        .collect();
+    let homes = spread(&all.iter().map(|(_, s)| s).collect::<Vec<_>>(), mm);
+    for ((c, s), home) in all.into_iter().zip(homes) {
         if s.crossed {
             out.extend(crate::plan::hole_marks(c.host, &s.ring, s.pen));
         } else {
@@ -665,11 +700,18 @@ pub fn plan_items(
                 b: w[1],
             });
         }
-        // its tag, where it was dragged; none yet: where it will be made
-        let (id, offset) = tags
-            .iter()
-            .find(|(_, t)| labels(t, &c, s.anchor))
-            .map_or((c.host, s.home * mm), |(id, t)| (*id, t.offset));
+        // its tag, where it was dragged; none yet, or left where it was
+        // made: where it will be made, clear of its neighbours' labels
+        let (id, offset) = tags.iter().find(|(_, t)| labels(t, &c, s.anchor)).map_or(
+            (c.host, home * mm),
+            |(id, t)| {
+                if t.offset.distance(s.home * mm) < 1e-6 {
+                    (*id, home * mm)
+                } else {
+                    (*id, t.offset)
+                }
+            },
+        );
         out.push(PlanItem::Tag {
             id,
             anchor: s.anchor,
@@ -939,6 +981,28 @@ mod tests {
             texts.contains(&"P Ø240 VZT sp. 2 280".to_string()),
             "{texts:?}"
         );
+        // each listed in the take-off by what it passes and its size
+        let lines = takeoff_lines(&m);
+        assert_eq!(lines.len(), 2);
+        assert!(lines.iter().all(|l| l.category == "Penetrations"
+            && l.quantity.count == 1
+            && l.label
+                .as_deref()
+                .is_some_and(|t| t.ends_with("– Ø240 (VZT)"))));
+        // the two labels near each other don't lie on one another
+        let tags: Vec<DVec2> = items
+            .iter()
+            .filter_map(|i| match i {
+                PlanItem::Tag { at, .. } => Some(*at),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tags.len(), 2);
+        assert!(
+            (tags[0].y - tags[1].y).abs() >= 3.5 * 0.05 - 1e-9
+                || (tags[0].x - tags[1].x).abs() > 0.5,
+            "{tags:?}"
+        );
         // a structural plan: the load-bearing wall's hole, never the
         // suspended ceiling's
         let st: Vec<_> = plan_items(&m, ElementId::new(), l, 1.2, 0.05, true)
@@ -989,4 +1053,124 @@ mod tests {
         let q = crate::annotate::resolve(&m, &view, &hp).unwrap();
         assert!(q.distance(DVec2::new(0.5, 0.0)) < 1e-9, "{q}");
     }
+}
+
+/// The take-off's lines for the penetrations (George: a take-off lists
+/// all there is to price): every trade's penetration the drawings take
+/// over (through walls and slabs from DN 80, through suspended ceilings
+/// and roofs all), and those drawn by hand with the Prestup tool, a line
+/// a hole, listed by what it passes, that construction's thickness and
+/// the hole's size: "Prestup nosnou stenou hr. 300 mm – Ø240 (VZT)".
+pub fn takeoff_lines(model: &Model) -> Vec<creabim_core::takeoff::Line> {
+    use creabim_core::takeoff::{Line, Quantity};
+    use creabim_core::words::tr;
+    let mm = |v: f64| format!("{}", (v * 1000.0).round() as i64);
+    let size = |round: bool, s: [f64; 2]| {
+        if round {
+            format!("Ø{}", mm(s[0]))
+        } else {
+            format!("{} × {}", mm(s[0]), mm(s[1]))
+        }
+    };
+    let area = |round: bool, s: [f64; 2]| {
+        if round {
+            std::f64::consts::PI * s[0] * s[0] / 4.0
+        } else {
+            s[0] * s[1]
+        }
+    };
+    let rules = creabim_core::masonry::rules(model);
+    let wall_text = |w: &creabim_core::Wall, s: String| {
+        let key = if creabim_core::masonry::is_bearing(model, w, &rules) {
+            "Penetration through a load-bearing wall th. {t} mm – {s}"
+        } else {
+            "Penetration through a wall th. {t} mm – {s}"
+        };
+        tr(key).replace("{t}", &mm(w.thickness)).replace("{s}", &s)
+    };
+    let line = |element, level, text: String, round: bool, s: [f64; 2], deep: f64| Line {
+        element,
+        category: "Penetrations",
+        level: Some(level),
+        material: None,
+        layer: None,
+        thickness: deep,
+        quantity: Quantity {
+            area: area(round, s),
+            length: deep,
+            count: 1,
+            ..Default::default()
+        },
+        perimeter: 0.0,
+        label: Some(text),
+    };
+    let mut out = vec![];
+    for c in crossings(model) {
+        let s = format!("{} ({})", size(c.round, c.size), c.code);
+        let host = model.get(c.host).map(|h| &h.kind);
+        let (text, deep) = match (c.through, host) {
+            (Through::Wall, Some(ElementKind::Wall(w))) => (wall_text(w, s), w.thickness),
+            (Through::Slab, Some(ElementKind::Slab(x))) => (
+                tr("Penetration through a slab th. {t} mm – {s}")
+                    .replace("{t}", &mm(x.thickness))
+                    .replace("{s}", &s),
+                x.thickness,
+            ),
+            (Through::Ceiling, Some(ElementKind::Ceiling(x))) => {
+                let (lo, hi) = x.span(model);
+                (
+                    tr("Penetration through a suspended ceiling th. {t} mm – {s}")
+                        .replace("{t}", &mm(hi - lo))
+                        .replace("{s}", &s),
+                    hi - lo,
+                )
+            }
+            (Through::Roof, Some(ElementKind::Roof(r))) => (
+                tr("Penetration through the roof th. {t} mm – {s}")
+                    .replace("{t}", &mm(r.vertical_thickness()))
+                    .replace("{s}", &s),
+                r.vertical_thickness(),
+            ),
+            _ => continue,
+        };
+        out.push(line(c.host, c.host_level, text, c.round, c.size, deep));
+    }
+    // drawn by hand
+    for e in model.iter() {
+        match &e.kind {
+            ElementKind::Opening(o) if o.is_penetration() => {
+                let Some(ElementKind::Wall(w)) = model.get(o.host).map(|h| &h.kind) else {
+                    continue;
+                };
+                let round = o.penetration.as_ref().is_some_and(|p| p.round);
+                let s = [o.width, o.height];
+                out.push(line(
+                    e.id,
+                    w.level,
+                    wall_text(w, size(round, s)),
+                    round,
+                    s,
+                    w.thickness,
+                ));
+            }
+            ElementKind::Shaft(sh) if sh.penetration.is_some() => {
+                let p = sh.penetration.as_ref().unwrap();
+                let (lo, hi) = sh.boundary.iter().fold(
+                    (DVec2::splat(f64::MAX), DVec2::splat(f64::MIN)),
+                    |(a, b), q| (a.min(*q), b.max(*q)),
+                );
+                let s = p.size.unwrap_or([hi.x - lo.x, hi.y - lo.y]);
+                out.push(line(
+                    e.id,
+                    sh.level,
+                    tr("Penetration through a slab – {s}").replace("{s}", &size(p.round, s)),
+                    p.round,
+                    s,
+                    0.0,
+                ));
+            }
+            _ => {}
+        }
+    }
+    out
 }

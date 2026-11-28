@@ -135,7 +135,7 @@ impl Layout {
 }
 
 /// The order element categories are listed in: as a house is built.
-pub const CATEGORY_ORDER: [&str; 22] = [
+pub const CATEGORY_ORDER: [&str; 23] = [
     "Footings",
     "Foundation slabs",
     "Reinforcement",
@@ -155,6 +155,7 @@ pub const CATEGORY_ORDER: [&str; 22] = [
     "Thresholds",
     "Outer sills",
     "Inner sills",
+    "Penetrations",
     "Tiling",
     "Objects",
     "Masses",

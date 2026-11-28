@@ -114,6 +114,9 @@ pub fn measure(model: &Model, scene: &[crate::scene::SceneItem]) -> Vec<Line> {
         }
     }
     lines.extend(plinths.lines());
+    // the penetrations, the trades' among them (George: all there is to
+    // price)
+    lines.extend(crate::tradepen::takeoff_lines(model));
     split_waterproofing(model, &mut lines);
     label_footings(model, &mut lines);
     lines

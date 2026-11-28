@@ -1,4 +1,11 @@
 {
+ "Penetrations": "Prostupy",
+ "Penetration through a wall th. {t} mm – {s}": "Prostup stěnou tl. {t} mm – {s}",
+ "Penetration through a load-bearing wall th. {t} mm – {s}": "Prostup nosnou stěnou tl. {t} mm – {s}",
+ "Penetration through a slab th. {t} mm – {s}": "Prostup stropní deskou tl. {t} mm – {s}",
+ "Penetration through a slab – {s}": "Prostup stropní deskou – {s}",
+ "Penetration through a suspended ceiling th. {t} mm – {s}": "Prostup podhledem tl. {t} mm – {s}",
+ "Penetration through the roof th. {t} mm – {s}": "Prostup střechou tl. {t} mm – {s}",
  "{m} – strip footing w. {w} mm": "{m} – základový pás š. {w} mm",
  "{m} – pad footing {a} × {b} mm": "{m} – patka {a} × {b} mm",
  "{m} – pile Ø {d} mm, length {h} mm": "{m} – pilota Ø {d} mm, hloubka {h} mm",
@@ -9210,5 +9217,7 @@
  "Two flues": "Dvouprůduch",
  "Two flues with a shaft": "Dvouprůduch se šachtou",
  "The flues of new chimneys, inner Ø in cm, and their ventilation shaft": "Průduchy nových komínů, světlý Ø v cm, a jejich větrací šachta",
- "shaft": "šachta"
+ "shaft": "šachta",
+ "STN 73 4301 čl. 4.2.2.2: at least 15 m³/h of fresh air a person present, and 0.5 air changes an hour of the dwelling.": "STN 73 4301 čl. 4.2.2.2: nejméně 15 m³/h čerstvého vzduchu na přítomnou osobu a zároveň průměrně 0,5násobná výměna vzduchu bytu za hodinu.",
+ "STN 73 4301 čl. 4.2.2.2 least fresh air": "Nejmenší přívod čerstvého vzduchu podle STN 73 4301 čl. 4.2.2.2"
 }
