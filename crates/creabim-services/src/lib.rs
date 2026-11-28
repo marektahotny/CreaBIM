@@ -43,6 +43,7 @@ pub mod model;
 pub mod network;
 pub mod peak_flow;
 pub mod pipe_types;
+pub mod pipeinsul;
 pub mod psi;
 pub mod radiators;
 pub mod recuperation;
@@ -53,6 +54,8 @@ pub mod storm;
 pub mod thermcheck;
 pub mod thermfield;
 pub mod tree;
+pub mod ufhnorm;
+pub mod ufhroute;
 pub mod water;
 
 pub use fluid::Fluid;

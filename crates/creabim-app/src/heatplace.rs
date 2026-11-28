@@ -22,14 +22,14 @@ pub(super) struct Step {
 /// A window tucked away: its layer, its title, and whether its tab has
 /// brought it back for a while.
 #[derive(Clone, Debug)]
-struct Tucked {
+pub(super) struct Tucked {
     layer: LayerId,
     title: String,
     shown: bool,
 }
 
 #[derive(Clone, Debug)]
-enum Windows {
+pub(super) enum Windows {
     /// Waiting a frame for the windows' titles (AccessKit's tree is built
     /// from the next frame on); whether AccessKit was off before.
     Reading { frames: u8, was_off: bool },
@@ -107,13 +107,7 @@ impl CreaBimApp {
         let tab = self.shell.settings.tools_tab;
         let (windows, tab) = match self.heat_place.take() {
             Some(p) => (p.windows, p.tab),
-            None => {
-                let was_off = ctx
-                    .accesskit_node_builder(egui::Id::new("heat.place.probe"), |_| ())
-                    .is_none();
-                ctx.enable_accesskit();
-                (Windows::Reading { frames: 0, was_off }, tab)
-            }
+            None => (begin_windows(ctx), tab),
         };
         ctx.memory_mut(|m| m.stop_text_input());
         let mut p = HeatPlace {
@@ -150,18 +144,7 @@ impl CreaBimApp {
         let Some(mut p) = self.heat_place.take() else {
             return;
         };
-        // the windows, read once they have drawn with AccessKit on
-        if let Windows::Reading { frames, was_off } = &mut p.windows {
-            *frames += 1;
-            ctx.request_repaint();
-            if *frames >= 2 {
-                let was_off = *was_off;
-                p.windows = Windows::Tucked(tuck(ctx));
-                if was_off {
-                    ctx.disable_accesskit();
-                }
-            }
-        }
+        read_windows(ctx, &mut p.windows);
         // a click placed it: the next one, or the end
         let mut done = false;
         if self.plan.objects.placed != p.placed {
@@ -194,14 +177,18 @@ impl CreaBimApp {
             return;
         }
         if let Windows::Tucked(w) = &mut p.windows {
-            tabs(ctx, w);
+            tabs(
+                ctx,
+                w,
+                "Shows the window for a while; it comes back where it was once the heat source is placed.",
+            );
         }
         pointer_note(ctx, &p.steps[p.at].note);
         self.heat_place = Some(p);
     }
 
     /// Bring the tucked windows back where they were, and their order.
-    fn untuck(&mut self, ctx: &egui::Context, w: &Windows) {
+    pub(super) fn untuck(&mut self, ctx: &egui::Context, w: &Windows) {
         match w {
             Windows::Reading { was_off, .. } => {
                 if *was_off {
@@ -226,6 +213,32 @@ impl CreaBimApp {
         let l = self.restore_order.remove(0);
         ctx.move_to_top(l);
         ctx.request_repaint();
+    }
+}
+
+/// Starts reading the open windows (their titles come with AccessKit's
+/// tree from the next frame on).
+pub(super) fn begin_windows(ctx: &egui::Context) -> Windows {
+    let was_off = ctx
+        .accesskit_node_builder(egui::Id::new("heat.place.probe"), |_| ())
+        .is_none();
+    ctx.enable_accesskit();
+    Windows::Reading { frames: 0, was_off }
+}
+
+/// Once a frame: the windows, read and tucked away once they have drawn
+/// with AccessKit on.
+pub(super) fn read_windows(ctx: &egui::Context, w: &mut Windows) {
+    if let Windows::Reading { frames, was_off } = w {
+        *frames += 1;
+        ctx.request_repaint();
+        if *frames >= 2 {
+            let was_off = *was_off;
+            *w = Windows::Tucked(tuck(ctx));
+            if was_off {
+                ctx.disable_accesskit();
+            }
+        }
     }
 }
 
@@ -264,7 +277,7 @@ fn tuck(ctx: &egui::Context) -> Vec<Tucked> {
 /// The tucked windows' tabs, side by side in the bottom right of the
 /// workspace; a click on one brings its window back for a while (and
 /// again tucks it away).
-fn tabs(ctx: &egui::Context, w: &mut [Tucked]) {
+pub(super) fn tabs(ctx: &egui::Context, w: &mut [Tucked], hint: &str) {
     if w.is_empty() {
         return;
     }
@@ -283,27 +296,21 @@ fn tabs(ctx: &egui::Context, w: &mut [Tucked]) {
                         .inner_margin(egui::Margin::symmetric(10, 6))
                         .corner_radius(4.0);
                     if t.shown {
-                        frame = frame.stroke(egui::Stroke::new(
-                            1.5,
-                            ui.visuals().selection.stroke.color,
-                        ));
+                        frame = frame
+                            .stroke(egui::Stroke::new(1.5, ui.visuals().selection.stroke.color));
                     }
                     let r = frame
                         .show(ui, |ui| {
                             ui.set_max_width(220.0);
                             ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(&t.title).strong(),
-                                )
-                                .truncate()
-                                .selectable(false)
-                                .sense(egui::Sense::click()),
+                                egui::Label::new(egui::RichText::new(&t.title).strong())
+                                    .truncate()
+                                    .selectable(false)
+                                    .sense(egui::Sense::click()),
                             )
                         })
                         .inner
-                        .on_hover_text(crate::i18n::t(
-                            "Shows the window for a while; it comes back where it was once the heat source is placed.",
-                        ));
+                        .on_hover_text(crate::i18n::t(hint));
                     if r.clicked() {
                         t.shown = !t.shown;
                         let to = if t.shown {
@@ -323,7 +330,7 @@ fn tabs(ctx: &egui::Context, w: &mut [Tucked]) {
 
 /// What is being placed, on a light plate beside the pointer, when it
 /// is over a view (not over a window).
-fn pointer_note(ctx: &egui::Context, text: &str) {
+pub(super) fn pointer_note(ctx: &egui::Context, text: &str) {
     let Some(at) = ctx.pointer_hover_pos() else {
         return;
     };

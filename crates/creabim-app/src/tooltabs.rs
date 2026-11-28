@@ -481,6 +481,12 @@ fn tab_entries(tab: usize) -> Vec<Entry> {
                 "Draw a hole in a room's underfloor heating, as a polygon or a rectangle: the system board, but no pipe",
             ),
             act(
+                "heat:bill",
+                "Bill of materials",
+                "sheet",
+                "The heating's bill of materials: heat sources, manifolds and radiators, pipes by type and size with their valves and insulation (Tubolit, MIRELON), the underfloor heating's system boards, pipe and coils",
+            ),
+            act(
                 "calc:radiators",
                 "Size radiators",
                 "table-2",

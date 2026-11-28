@@ -207,11 +207,13 @@ impl CreaBimApp {
                 unit.name,
                 t("click in a plan or the 3D view to place it. Space turns it; Esc ends.")
             );
+            let what = unit.name.clone();
             self.plan.objects.current = Some(unit);
             self.plan.objects.offset = None;
             self.plan.objects.project_type = None;
             self.plan.cancel();
             self.plan.tool = Tool::Object;
+            self.park(what);
         }
         self.med_unit = if open { Some(c) } else { None };
     }

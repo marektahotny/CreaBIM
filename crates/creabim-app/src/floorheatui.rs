@@ -17,6 +17,10 @@ impl CreaBimApp {
     /// `calc:floorheat` from the Heating tab: open the window; `ufh:edge`,
     /// `ufh:reduced`, `ufh:hole`: draw such a zone in a room.
     pub(super) fn floor_heat_action(&mut self, head: &str, arg: &str) -> bool {
+        if head == "heat" && arg == "bill" {
+            self.open_heating_bill();
+            return true;
+        }
         if head == "ufh" {
             let kind = match arg {
                 "edge" => UfhZone::Edge,
@@ -35,6 +39,43 @@ impl CreaBimApp {
             self.floor_heat = Some(self.saved_settings("floorheat").unwrap_or_default());
         }
         true
+    }
+
+    /// The heating's bill of materials: its schedule (the heating's
+    /// pipe list), made when the project has none, opened.
+    pub(super) fn open_heating_bill(&mut self) {
+        use creabim_core::viewmodes::Trade;
+        use creabim_core::{Element, ScheduleCategory, View, ViewKind};
+        let found = self.doc.model().iter().find_map(|e| match &e.kind {
+            ElementKind::View(v)
+                if matches!(v.kind, ViewKind::Schedule { category, .. } if category == ScheduleCategory::PipeList)
+                    && v.trade == Some(Trade::Heating) =>
+            {
+                Some(e.id)
+            }
+            _ => None,
+        });
+        let id = match found {
+            Some(id) => id,
+            None => {
+                let mut v = View::schedule(ScheduleCategory::PipeList);
+                v.trade = Some(Trade::Heating);
+                let e = Element::new(
+                    format!("{} VYK", crate::i18n::tr("Bill of materials")),
+                    ElementKind::View(v),
+                );
+                let id = e.id;
+                if let Err(e) = self
+                    .doc
+                    .commit(Transaction::new("Bill of materials").insert(e))
+                {
+                    self.status = format!("Couldn't do that: {e}");
+                    return;
+                }
+                id
+            }
+        };
+        self.active_view = Some(id);
     }
 
     /// The zone tool, drawing `kind` as a polygon or a rectangle.
@@ -67,9 +108,12 @@ impl CreaBimApp {
         let found = creabim_services::calcresults::floor_heat(&d).with_settings(&s);
         let written = self.is_written(&found);
         let mut write_now = false;
+        let mut bill = false;
         let mut open = true;
         let mut select = None;
         let mut draw: Option<UfhZone> = None;
+        // a manifold made to order, to place
+        let mut place: Option<creabim_core::catalogue::ufhmanifold::ManifoldConfig> = None;
         // a room's underfloor heating to set (none takes it away)
         let mut set: Vec<(ElementId, Option<Underfloor>)> = vec![];
         let area = self.mat.area.unwrap_or_else(|| ctx.content_rect());
@@ -80,9 +124,18 @@ impl CreaBimApp {
             .default_size(crate::app::shell::at_least(Vec2::new(900.0, 620.0)))
             .constrain_to(area)
             .show(ctx, |ui| {
-                if super::calcresultsui::write_button(ui, written) {
-                    write_now = true;
-                }
+                ui.horizontal(|ui| {
+                    if super::calcresultsui::write_button(ui, written) {
+                        write_now = true;
+                    }
+                    if ui
+                        .button(t("Bill of materials"))
+                        .on_hover_text(t("The heating's bill of materials, as last written"))
+                        .clicked()
+                    {
+                        bill = true;
+                    }
+                });
                 ui.horizontal(|ui| {
                     ui.label(t("Supply temperature"));
                     ui.add(
@@ -148,6 +201,7 @@ impl CreaBimApp {
                     return;
                 }
                 let on: Vec<&floorheat::RoomDesign> = d.rooms.iter().filter(|x| x.on).collect();
+                let marks = creabim_core::marks(self.doc.model());
                 ui.horizontal(|ui| {
                     if ui.button(t("All rooms")).clicked() {
                         for x in d.rooms.iter().filter(|x| !x.on) {
@@ -185,6 +239,12 @@ impl CreaBimApp {
                         }
                     }
                 });
+                if !d.norm {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        t("The tables of STN EN 1264-2 are not loaded (Manage › Norm tables): the heat flux is approximated."),
+                    );
+                }
                 if d.no_manifold {
                     ui.colored_label(
                         ui.visuals().warn_fg_color,
@@ -192,6 +252,15 @@ impl CreaBimApp {
                     );
                 }
                 egui::ScrollArea::vertical().show(ui, |ui| {
+                    // step 1: the manifold and the pipes of each role
+                    if !d.manifolds.is_empty() {
+                        egui::CollapsingHeader::new(t("Manifold and pipes"))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                manifold_ui(ui, self.doc.model(), &d, &mut s, &mut place);
+                            });
+                        ui.add_space(4.0);
+                    }
                     use crate::sheet::{self, Col};
                     let cols = [
                         Col::text(""),
@@ -200,6 +269,7 @@ impl CreaBimApp {
                         Col::num("q / needed", "W/m²"),
                         Col::text("Spacing"),
                         Col::text("Laying"),
+                        Col::text("Connected by"),
                         Col::num("RλB", "m²K/W"),
                         Col::num("su", "mm"),
                         Col::num("qu", "W/m²"),
@@ -207,13 +277,12 @@ impl CreaBimApp {
                         Col::num("Loop", "m"),
                         Col::num("Flow", "l/h"),
                         Col::num("Δp", "kPa"),
-                        Col::num("Throttle by", "kPa"),
                     ];
                     let total = |row: &mut sheet::Row| {
                         row.empty();
                         row.text(t("Total"));
                         row.text(num(on.iter().map(|x| x.phi).sum::<f64>(), 0));
-                        for _ in 0..6 {
+                        for _ in 0..7 {
                             row.empty();
                         }
                         row.text(d.loops.to_string());
@@ -308,6 +377,39 @@ impl CreaBimApp {
                                 }
                             }
                         });
+                        // the doorway the loops come in by from the manifold
+                        row.cell(|ui| {
+                            let (true, Some(u)) = (x.on, &x.ufh) else {
+                                return;
+                            };
+                            if x.doors.is_empty() {
+                                ui.weak("–");
+                                return;
+                            }
+                            let name = |id: ElementId| {
+                                marks.get(&id).cloned().unwrap_or_else(|| t("Door"))
+                            };
+                            let shown = match (u.door, x.door) {
+                                (Some(d), _) => name(d),
+                                (None, Some(d)) => format!("{} ({})", name(d), t("auto")),
+                                _ => t("auto"),
+                            };
+                            let mut pick = u.door;
+                            egui::ComboBox::from_id_salt(("floor.heat.door", x.id))
+                                .width(90.0)
+                                .selected_text(shown)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut pick, None, t("auto"));
+                                    for w in &x.doors {
+                                        ui.selectable_value(&mut pick, Some(w.id), name(w.id));
+                                    }
+                                });
+                            if pick != u.door {
+                                let mut u = u.clone();
+                                u.door = pick;
+                                set.push((x.id, Some(u)));
+                            }
+                        });
                         row.text(num(x.finish_r, 3));
                         row.text(num(x.su * 1000.0, 0));
                         row.text(num(x.q_down, 1));
@@ -315,9 +417,6 @@ impl CreaBimApp {
                         row.text(num(x.loop_len, 0));
                         row.text(num(x.flow_ls * 3600.0, 0));
                         row.text(num(x.dp_kpa, 1));
-                        if x.on {
-                            row.text(num(d.critical_kpa - x.dp_kpa, 1));
-                        }
                     }, Some(&total));
                     ui.add_space(6.0);
                     // the rooms' zones and how their loops are split
@@ -358,6 +457,22 @@ impl CreaBimApp {
         }
         if let Some(k) = draw {
             self.start_ufh_zone(k);
+            self.park(t(k.label()));
+        }
+        if let Some(c) = place {
+            let unit = creabim_core::catalogue::ufhmanifold::manifold(&c);
+            self.status = format!(
+                "{}: {}",
+                unit.name,
+                t("click in a plan or the 3D view to place it. Space turns it; Esc ends.")
+            );
+            let what = unit.name.clone();
+            self.plan.objects.current = Some(unit);
+            self.plan.objects.offset = None;
+            self.plan.objects.project_type = None;
+            self.plan.cancel();
+            self.plan.tool = super::Tool::Object;
+            self.park(what);
         }
         if !set.is_empty() {
             let mut tx = Transaction::new("Underfloor heating");
@@ -378,6 +493,9 @@ impl CreaBimApp {
         }
         if write_now {
             self.write_results_said(found);
+        }
+        if bill {
+            self.open_heating_bill();
         }
         self.floor_heat = if open { Some(s) } else { None };
     }
@@ -588,4 +706,331 @@ fn floor_ui(ui: &mut egui::Ui, f: &floorheat::FloorBuild, rooms: &[&str]) {
             num(f.r_under, 2)
         ));
     });
+}
+
+/// A storey's manifold (the product its circuits pick, its range, cabinet
+/// and mixing set, placing it) and the pipes of each role: the loops,
+/// from the source to the manifold, from the manifold to the radiators
+/// picked on it, with their sizes, flows and insulation.
+fn manifold_ui(
+    ui: &mut egui::Ui,
+    model: &creabim_core::Model,
+    d: &floorheat::Design,
+    s: &mut floorheat::Settings,
+    place: &mut Option<creabim_core::catalogue::ufhmanifold::ManifoldConfig>,
+) {
+    use creabim_core::catalogue::ufhmanifold::{Cabinet, Range};
+    let t = crate::i18n::tr;
+    let num = crate::i18n::num;
+    let maker = floorheat::model_maker(model);
+    ui.horizontal(|ui| {
+        ui.label(t("Range"));
+        let auto = Range::for_pipe(&maker);
+        egui::ComboBox::from_id_salt("floor.heat.range")
+            .width(300.0)
+            .selected_text(match s.range {
+                Some(r) => r.label().to_string(),
+                None => format!("{} ({})", auto.label(), t("by the system board")),
+            })
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(s.range.is_none(), t("By the system board's maker"))
+                    .clicked()
+                {
+                    s.range = None;
+                }
+                for r in Range::ALL {
+                    if ui.selectable_label(s.range == Some(r), r.label()).clicked() {
+                        s.range = Some(r);
+                    }
+                }
+            });
+        ui.label(t("Cabinet"));
+        egui::ComboBox::from_id_salt("floor.heat.cabinet")
+            .selected_text(t(cabinet_label(s.cabinet)))
+            .show_ui(ui, |ui| {
+                for c in [Cabinet::Flush, Cabinet::Wall, Cabinet::None] {
+                    ui.selectable_value(&mut s.cabinet, c, t(cabinet_label(c)));
+                }
+            });
+        ui.checkbox(&mut s.mixing, t("Mixing set"));
+    });
+    ui.checkbox(&mut s.regulation, t("Regulation (actuators, thermostats)"));
+    let level_name = |id| model.get(id).map_or(String::new(), |l| l.name.clone());
+    for m in &d.manifolds {
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.strong(level_name(m.level));
+            match m.config.circuits() {
+                Some(n) => {
+                    ui.label(format!(
+                        "{} · {} {} ({} + {})",
+                        m.config.name(),
+                        n,
+                        t("circuits"),
+                        m.config.loops,
+                        m.config.extra
+                    ));
+                    if let Some(c) = m.config.cabinet_spec() {
+                        ui.weak(format!(
+                            "{} {} · {} × {} × {} mm",
+                            t("cabinet"),
+                            c.code,
+                            num(c.width, 0),
+                            num(c.height, 0),
+                            num(c.depth, 0)
+                        ));
+                    } else if m.config.cabinet != Cabinet::None {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            t("The maker has no such cabinet for it"),
+                        );
+                    }
+                    let label = if m.element.is_some() {
+                        t("Place another")
+                    } else {
+                        t("Place it")
+                    };
+                    if ui.button(label).clicked() {
+                        *place = Some(m.config.clone());
+                    }
+                }
+                None => {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        format!(
+                            "{} {} {}: {}",
+                            m.config.needed(),
+                            t("circuits"),
+                            t("are more than the range makes"),
+                            t("split the storey into two manifolds or pick another range")
+                        ),
+                    );
+                }
+            }
+        });
+        use crate::sheet::{self, Col};
+        let cols = [
+            Col::text("Pipe for"),
+            Col::text("Pipe"),
+            Col::text("Code"),
+            Col::num("Flow", "l/h"),
+            Col::num("v", "m/s"),
+            Col::num("R", "Pa/m"),
+            Col::num("Insulation", "mm"),
+            Col::num("Length", "m"),
+        ];
+        // (role, pipe, code, flow l/h, v, R, insulation, length)
+        let mut rows: Vec<[String; 8]> = vec![];
+        if let Some(p) = &d.pipe {
+            let (n, len) = d
+                .rooms
+                .iter()
+                .filter(|x| x.on)
+                .filter(|x| {
+                    matches!(model.get(x.id).map(|e| &e.kind),
+                    Some(creabim_core::ElementKind::Room(r)) if r.level == m.level)
+                })
+                .fold((0, 0.0), |(n, l), x| {
+                    (n + x.loops, l + x.loop_len * x.loops as f64)
+                });
+            rows.push([
+                format!("{} ({n})", t("Loops")),
+                format!("{} {}", p.name, p.segment),
+                p.code.clone(),
+                num(
+                    (m.flow_ls
+                        - m.radiators
+                            .iter()
+                            .filter_map(|r| r.pipe.as_ref())
+                            .map(|p| p.flow_ls)
+                            .sum::<f64>())
+                        * 3600.0,
+                    0,
+                ),
+                String::new(),
+                String::new(),
+                "0".into(),
+                num(len, 0),
+            ]);
+        }
+        let sized = |role: String, p: &floorheat::SizedPipe, len: String| -> [String; 8] {
+            [
+                role,
+                format!("{} {}", p.pipe.name, p.pipe.segment),
+                p.pipe.code.clone(),
+                num(p.flow_ls * 3600.0, 0),
+                num(p.velocity, 2),
+                num(p.r_pa_m, 0),
+                num(p.insulation_mm, 0),
+                len,
+            ]
+        };
+        if let Some(p) = &m.feed {
+            rows.push(sized(
+                t("From the source to the manifold"),
+                p,
+                t("as drawn"),
+            ));
+        }
+        for r in &m.radiators {
+            let name = model.get(r.id).map_or(String::new(), |e| t(&e.name));
+            if let Some(p) = &r.pipe {
+                rows.push(sized(
+                    format!(
+                        "{} {} {} ({} W)",
+                        t("Radiator"),
+                        r.room,
+                        name,
+                        num(r.output_w, 0)
+                    ),
+                    p,
+                    num(r.length, 1),
+                ));
+            }
+        }
+        sheet::show(
+            ui,
+            ("floor.heat.pipes", m.level),
+            &cols,
+            rows.len(),
+            200.0,
+            |row, i| {
+                for c in &rows[i] {
+                    row.text(c.clone());
+                }
+            },
+            None,
+        );
+        // the circuits balanced: presetting, flow on the flowmeter
+        if !m.circuits.is_empty() {
+            let cols = [
+                Col::text("Circuit"),
+                Col::num("Flow", "l/h"),
+                Col::num("Flowmeter", "l/min"),
+                Col::num("Δp pipe", "kPa"),
+                Col::text("Presetting"),
+                Col::num("kv", "m³/h"),
+                Col::num("Δp valve", "kPa"),
+                Col::num("Δp total", "kPa"),
+            ];
+            sheet::show(
+                ui,
+                ("floor.heat.circuits", m.level),
+                &cols,
+                m.circuits.len(),
+                220.0,
+                |row, i| {
+                    let c = &m.circuits[i];
+                    let label = if c.radiator {
+                        format!("{} {}", t("Radiator"), c.label)
+                    } else {
+                        c.label.clone()
+                    };
+                    if c.index {
+                        row.cell(|ui| {
+                            ui.strong(format!("{label} ({})", t("index")));
+                        });
+                    } else {
+                        row.text(label);
+                    }
+                    row.text(num(c.flow_ls * 3600.0, 0));
+                    let f = num(c.flow_lmin(), 2);
+                    if c.over_flowmeter {
+                        row.cell(|ui| {
+                            ui.colored_label(ui.visuals().warn_fg_color, f)
+                                .on_hover_text(t("More than the flowmeter shows: split the loop"));
+                        });
+                    } else {
+                        row.text(f);
+                    }
+                    row.text(num(c.dp_pipe_kpa, 1));
+                    match (c.preset, c.kv) {
+                        (Some(p), Some(kv)) => {
+                            if c.under {
+                                row.cell(|ui| {
+                                    ui.colored_label(ui.visuals().warn_fg_color, p)
+                                        .on_hover_text(t(
+                                            "Even the smallest presetting throttles too little",
+                                        ));
+                                });
+                            } else {
+                                row.text(p.to_string());
+                            }
+                            row.text(num(kv, 3));
+                        }
+                        _ => {
+                            row.text(t("by the flowmeter"));
+                            row.empty();
+                        }
+                    }
+                    row.text(num(c.dp_valve_kpa, 1));
+                    row.text(num(c.dp_pipe_kpa + c.dp_valve_kpa, 1));
+                },
+                None,
+            );
+            ui.weak(if m.config.range.presets().is_empty() {
+                t("The maker gives no kv of its valves: every circuit is balanced by setting its flow on the flowmeter (l/min); the manifold's own loss is not counted.")
+            } else {
+                t("The index circuit (the worst) has its valve wide open; every other valve is preset to take what its pipe does not (kv = Q / √(Δp / 100), the maker's table). Set the flow of every circuit on its flowmeter as well.")
+            });
+        }
+        // the radiators standing on the storey, to feed from the manifold
+        let radiators: Vec<&creabim_core::Element> = model
+            .iter()
+            .filter(
+                |e| matches!(&e.kind, creabim_core::ElementKind::Object(o) if o.level == m.level),
+            )
+            .filter(|e| {
+                creabim_core::fixture::family_of(model, e)
+                    .is_some_and(creabim_core::fixture::is_heating)
+            })
+            .collect();
+        if !radiators.is_empty() {
+            let numbers = floorheat::room_numbers(model, &radiators);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(t("Radiators fed from the manifold:"));
+                for e in radiators {
+                    let room = numbers
+                        .iter()
+                        .find(|x| x.0 == e.id)
+                        .map_or(String::new(), |x| x.1.clone());
+                    let name = format!("{room} {}", t(&e.name)).trim().to_string();
+                    let mut on = s.radiators.contains(&e.id);
+                    if ui.checkbox(&mut on, name).changed() {
+                        if on {
+                            s.radiators.push(e.id);
+                        } else {
+                            s.radiators.retain(|x| *x != e.id);
+                        }
+                    }
+                }
+            });
+        }
+    }
+    ui.horizontal(|ui| {
+        ui.label(t("Radiators' supply / return"));
+        ui.add(
+            egui::DragValue::new(&mut s.radiator_supply_c)
+                .range(35.0..=90.0)
+                .speed(0.5)
+                .suffix(" °C"),
+        );
+        ui.add(
+            egui::DragValue::new(&mut s.radiator_return_c)
+                .range(25.0..=80.0)
+                .speed(0.5)
+                .suffix(" °C"),
+        );
+    });
+    ui.weak(t("Each pipe is its maker's: the loops the system board's (HERZ: plasthliník for underfloor heating, Wavin: PE-RT/EVOH), from the source to the manifold and to the radiators the maker's distribution pipe (HERZ PipeFix, Wavin Tigris K5), sized as the radiators' heating: 0.8 m/s on the main, 0.5 m/s to a radiator, 150 Pa/m. Radiators on the manifold are its extra outlets; their pipes run in the floor's insulation layer, insulated as heating pipes. The way to a radiator: as the crow flies × 1.2 until routes are drawn."));
+}
+
+fn cabinet_label(c: creabim_core::catalogue::ufhmanifold::Cabinet) -> &'static str {
+    use creabim_core::catalogue::ufhmanifold::Cabinet;
+    match c {
+        Cabinet::Flush => "Under the plaster",
+        Cabinet::Wall => "On the wall",
+        Cabinet::None => "No cabinet",
+    }
 }

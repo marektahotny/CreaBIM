@@ -795,7 +795,13 @@ fn set(model: &Model, frame: bool) -> Option<(Transaction, Made)> {
                         .unwrap_or_else(|| {
                             let mut v = View::schedule(ScheduleCategory::PipeList);
                             v.trade = Some(trade);
-                            b.view(format!("{} {code}", tr("Pipe list")), v)
+                            // heating: its whole bill, not the pipes only
+                            let title = if trade == creabim_core::viewmodes::Trade::Heating {
+                                tr("Bill of materials")
+                            } else {
+                                tr("Pipe list")
+                            };
+                            b.view(format!("{title} {code}"), v)
                         }),
                     )
                 })
