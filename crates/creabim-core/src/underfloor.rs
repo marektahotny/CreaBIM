@@ -310,6 +310,68 @@ fn clip_convex(subject: &[DVec2], clip: &[DVec2]) -> Vec<DVec2> {
     out
 }
 
+/// The distance of `p` from the segment `a`–`b`.
+fn seg_dist(p: DVec2, a: DVec2, b: DVec2) -> f64 {
+    let ab = b - a;
+    let l = ab.length_squared();
+    if l < 1e-18 {
+        return p.distance(a);
+    }
+    p.distance(a + ab * ((p - a).dot(ab) / l).clamp(0.0, 1.0))
+}
+
+/// The field `outer` with the hole `hole` inside it, joined by a slit of
+/// no width from the hole's nearest point to the nearest wall: one ring
+/// the coil's rings can follow round the hole as well as the walls.
+pub fn keyhole(outer: &[DVec2], hole: &[DVec2]) -> Vec<DVec2> {
+    let (n, m) = (outer.len(), hole.len());
+    // the hole the other way round from the field
+    let mut h: Vec<DVec2> = hole.to_vec();
+    if (crate::polygon::signed_area2(&h) > 0.0) == (crate::polygon::signed_area2(outer) > 0.0) {
+        h.reverse();
+    }
+    // its corners and its sides' middles, each to its foot on each wall
+    let mut best: Option<(f64, usize, Option<DVec2>, usize, DVec2)> = None;
+    for j in 0..m {
+        let mid = (h[j] + h[(j + 1) % m]) / 2.0;
+        for (q, at) in [(h[j], None), (mid, Some(mid))] {
+            for i in 0..n {
+                let (a, b) = (outer[i], outer[(i + 1) % n]);
+                let ab = b - a;
+                let l = ab.length_squared();
+                if l < 1e-18 {
+                    continue;
+                }
+                let foot = a + ab * ((q - a).dot(ab) / l).clamp(0.0, 1.0);
+                let d = q.distance(foot);
+                if best.is_none_or(|b| d < b.0 - 1e-9) {
+                    best = Some((d, j, at, i, foot));
+                }
+            }
+        }
+    }
+    let Some((_, j, at, i, foot)) = best else {
+        return outer.to_vec();
+    };
+    // the hole's ring from where the slit meets it, round and back to it
+    let ring: Vec<DVec2> = match at {
+        Some(mid) => std::iter::once(mid)
+            .chain((1..=m).map(|k| h[(j + k) % m]))
+            .chain(std::iter::once(mid))
+            .collect(),
+        None => (0..=m).map(|k| h[(j + k) % m]).collect(),
+    };
+    let mut out: Vec<DVec2> = outer[..=i].to_vec();
+    if foot.distance(outer[i]) > 1e-9 {
+        out.push(foot);
+    }
+    out.extend(ring);
+    out.push(foot);
+    out.extend(outer[i + 1..].iter().copied());
+    out.dedup_by(|a, b| a.distance(*b) < 1e-9);
+    out
+}
+
 /// The edge strip left free along the walls, m.
 pub const EDGE: f64 = 0.1;
 
@@ -937,9 +999,25 @@ pub fn loops_from(outline: &[DVec2], u: &Underfloor, from: Option<DVec2>) -> Vec
             if holes.is_empty() {
                 return z;
             }
-            square_less(&z, &holes)
+            let mut f = square_less(&z, &holes)
                 .filter(|r| r.len() >= 3)
-                .unwrap_or(z)
+                .unwrap_or(z);
+            // a hole inside the field, off the walls: the field bridged
+            // to it from the nearest wall, so the rings go round it too
+            // (George 2026-11-28: not only cut)
+            for h in &holes {
+                if h.len() >= 3
+                    && h.iter().all(|p| {
+                        crate::polygon::contains(&f, *p)
+                            && f.iter()
+                                .enumerate()
+                                .all(|(i, a)| seg_dist(*p, *a, f[(i + 1) % f.len()]) > edge)
+                    })
+                {
+                    f = keyhole(&f, h);
+                }
+            }
+            f
         })
         .collect();
     let corner = |part: &[DVec2]| {
@@ -1427,6 +1505,63 @@ mod tests {
         assert_eq!(loops(&rect(6.0, 4.0), &u).len(), 2);
         assert!(u.validate().is_ok());
         assert!(Underfloor { loops: 0, ..u }.validate().is_err());
+    }
+
+    #[test]
+    fn a_coil_goes_round_a_hole_in_the_middle_of_the_room() {
+        let r = vec![
+            DVec2::new(0.0, 0.0),
+            DVec2::new(5.0, 0.0),
+            DVec2::new(5.0, 4.0),
+            DVec2::new(0.0, 4.0),
+        ];
+        let hole = vec![
+            DVec2::new(2.0, 1.5),
+            DVec2::new(3.0, 1.5),
+            DVec2::new(3.0, 2.5),
+            DVec2::new(2.0, 2.5),
+        ];
+        let u = Underfloor {
+            spacing: 0.2,
+            zones: vec![Zone {
+                kind: ZoneKind::Hole,
+                outline: hole.clone(),
+                on: true,
+                mark: None,
+            }],
+            ..Underfloor::default()
+        };
+        let ls = loops(&r, &u);
+        assert_eq!(ls.len(), 1);
+        let s = &ls[0];
+        // no pipe in the hole, nor nearer it than the walls allow
+        for p in s.supply.iter().chain(&s.ret) {
+            let inside = p.x > 2.0 - EDGE + 1e-6
+                && p.x < 3.0 + EDGE - 1e-6
+                && p.y > 1.5 - EDGE + 1e-6
+                && p.y < 2.5 + EDGE - 1e-6;
+            assert!(!inside, "{p:?}");
+        }
+        // the floor round it filled: about its area over the spacing
+        let area = 5.0 * 4.0 - 1.0;
+        assert!(
+            s.length > area / 0.2 * 0.8 && s.length < area / 0.2 * 1.2,
+            "{}",
+            s.length
+        );
+        // and the rings pass on both sides of it
+        let across = |lo: f64, hi: f64| {
+            s.supply
+                .windows(2)
+                .any(|w| (w[0].x - 2.5) * (w[1].x - 2.5) < 0.0 && w[0].y > lo && w[0].y < hi)
+        };
+        assert!(across(2.5, 4.0) && across(0.0, 1.5));
+        // and the hole is wrapped: runs along its sides at the edge distance
+        assert!(s
+            .supply
+            .iter()
+            .chain(&s.ret)
+            .any(|p| (p.y - (2.5 + EDGE)).abs() < 1e-6));
     }
 
     #[test]
