@@ -207,6 +207,9 @@ pub struct Opts {
     /// The room unit's model and how high it sits, m.
     pub room_unit: usize,
     pub room_unit_at: f64,
+    /// The persons living in the house (STN 73 4301 čl. 4.2.2.2: at
+    /// least 15 m³/h of fresh air a person present).
+    pub persons: u32,
 }
 
 impl Default for Opts {
@@ -221,6 +224,7 @@ impl Default for Opts {
             zeta_bend: 0.5,
             room_unit: 0,
             room_unit_at: 2.0,
+            persons: 4,
         }
     }
 }
@@ -336,6 +340,12 @@ pub struct Design {
     pub rooms: Vec<RoomAir>,
     pub need_supply: f64,
     pub need_extract: f64,
+    /// The dwelling's least fresh air by STN 73 4301 čl. 4.2.2.2, m³/h:
+    /// the larger of 0.5 air changes an hour of the ventilated rooms'
+    /// volume and 15 m³/h a person.
+    pub need_norm: f64,
+    /// The ventilated rooms' volume, m³ (garage and outdoor rooms left out).
+    pub volume: f64,
     /// The balanced flow the unit runs at, m³/h.
     pub flow: f64,
     pub unit: Option<usize>,
@@ -918,6 +928,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
     let residential = is_residential(model);
     let mut geo: Vec<RoomGeo> = vec![];
     let mut need: Vec<f64> = vec![];
+    let mut volume: Vec<f64> = vec![];
     for hl in &losses.rooms {
         let Some(e) = model.get(hl.id) else { continue };
         let ElementKind::Room(r) = &e.kind else {
@@ -945,6 +956,7 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
         // a building other than dwellings: the decree's least air
         // changes for the rooms its table lists
         let n4 = if residential { None } else { table4(hl.kind) };
+        volume.push(hl.volume);
         need.push(match n4 {
             Some(n) => hl.v_min.max(n * hl.volume).round(),
             None => hl.v_min.round(),
@@ -1019,7 +1031,31 @@ pub fn design(model: &Model, ho: &heatloss::Opts, o: &Opts) -> Design {
             .map(|r| ceil_to(r.need - 1e-9, 5.0).max(0.0))
             .sum()
     };
-    let q = base(Role::Supply).max(base(Role::Extract));
+    let mut q = base(Role::Supply).max(base(Role::Extract));
+    // STN 73 4301 čl. 4.2.2.2 (budovy na bývanie, rodinné domy too):
+    // the dwelling ventilated at an average 0.5 air changes an hour, and
+    // at the same time at least 15 m³/h of fresh air a person present
+    if residential {
+        d.volume = d
+            .rooms
+            .iter()
+            .zip(&volume)
+            .filter(|(r, _)| r.role != Role::Out)
+            .map(|(_, v)| v)
+            .sum();
+        d.need_norm = (0.5 * d.volume).max(15.0 * o.persons as f64);
+        if q > 0.0 && q + 1e-9 < d.need_norm {
+            let raised = ceil_to(d.need_norm - 1e-9, 5.0);
+            d.warnings.push(format!(
+                "Prietok zvýšený z {q:.0} na {raised:.0} m³/h: STN 73 4301 čl. 4.2.2.2 požaduje 0,5 1/h z objemu {:.0} m³ ({:.0} m³/h) a najmenej 15 m³/h na osobu ({} os. = {} m³/h).",
+                d.volume,
+                0.5 * d.volume,
+                o.persons,
+                15 * o.persons
+            ));
+            q = raised;
+        }
+    }
     for role in [Role::Supply, Role::Extract] {
         let idx: Vec<usize> = (0..d.rooms.len())
             .filter(|&i| d.rooms[i].role == role)
@@ -2473,6 +2509,30 @@ mod tests {
         assert!((v - 1.57).abs() < 0.01 && (r - 1.42).abs() < 1e-9);
         assert!((gp_friction(50.0).1 - 5.17).abs() < 1e-9);
         assert!((gp_friction(27.5).1 - 1.72).abs() < 1e-9);
+    }
+
+    #[test]
+    fn fresh_air_is_at_least_stn_73_4301s() {
+        // čl. 4.2.2.2: 0.5 air changes an hour, and 15 m³/h a person
+        let model = creabim_core::starter::starter_house();
+        let d = design(&model, &heatloss::Opts::default(), &Opts::default());
+        assert!(d.volume > 0.0);
+        assert!(d.need_norm >= 0.5 * d.volume - 1e-9 && d.need_norm >= 60.0);
+        assert!(d.flow + 1e-9 >= d.need_norm, "{} < {}", d.flow, d.need_norm);
+        let many = Opts {
+            persons: 30,
+            ..Opts::default()
+        };
+        let d = design(&model, &heatloss::Opts::default(), &many);
+        assert!(d.flow >= 450.0, "{}", d.flow);
+        let s: f64 = d
+            .rooms
+            .iter()
+            .filter(|r| r.role == Role::Supply)
+            .map(|r| r.design)
+            .sum();
+        assert!((s - d.flow).abs() < 1e-6);
+        assert!(d.warnings.iter().any(|w| w.contains("4.2.2.2")));
     }
 
     #[test]
