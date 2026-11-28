@@ -41,9 +41,11 @@ Profilom sa môže stať ľubovoľný náčrt (v ľubovoľnej rovine, otvorený 
 
 ## Komíny {#chimneys}
 
-Nástroj **Komín** umiestni komín Schiedel kliknutím: v lište zvoľte systém (KERASTAR, ABSOLUT, UNI ADVANCED PLUS) a prieduch, jeho spodok, výšku a pootočenie tvárnice. Obrys a prieduch majú rozmery výrobcu podľa dátových listov Schiedel Slovensko; Vlastnosti ich ukazujú aj so zdrojom a systém či prieduch zmenia na mieste. Komín prechádzajúci strechou dostane lemovanie a krov od neho drží 50 mm ako pri každom diele; výkaz ho uvádza v skupine Komíny v bežných metroch a s hmotnosťou.
+Nástroj **Komín** umiestni komín Schiedel kliknutím: v lište zvoľte systém (KERASTAR, ABSOLUT, UNI SMART, UNI ADVANCED PLUS, STABIL) a typ, jeho spodok, výšku a pootočenie tvárnice. Typ je jeden alebo dva prieduchy, s vetracou šachtou alebo bez nej.
 
-Tvárnice s vetracou šachtou a dvojprieduchové tvárnice pribudnú.
+Obrys a prieduch majú rozmery výrobcu podľa dátových listov Schiedel Slovensko; Vlastnosti ich ukazujú aj so zdrojom a systém či prieduch zmenia na mieste. Komín prechádzajúci strechou dostane lemovanie a krov od neho drží 50 mm ako pri každom diele; výkaz ho uvádza v skupine Komíny v bežných metroch a s hmotnosťou.
+
+Listy výrobcu udávajú vonkajší rozmer tvárnice a jej šachtu, nie polohu prieduchov a šachty v nej: každý prieduch je v strede štvorcovej bunky šírky tvárnice na jej konci, šachta v strede zvyšku.
 
 ## Dutiny {#voids}
 
