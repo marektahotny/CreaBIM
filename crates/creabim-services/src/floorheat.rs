@@ -504,7 +504,7 @@ fn open_spaces(model: &Model, rooms: &[heatloss::RoomAt<'_>], designs: &mut [Roo
         let r = root(&mut group, i);
         let t = totals.entry(r).or_default();
         t.0 += x.phi;
-        t.1 += x.covered;
+        t.1 += x.covered + x.radiators_w;
     }
     for (i, x) in designs.iter_mut().enumerate() {
         if !x.on || x.open_to.is_empty() {
@@ -569,6 +569,9 @@ pub struct RoomDesign {
     pub hole_area: f64,
     /// What the floor gives, W.
     pub covered: f64,
+    /// What the radiators fed from the manifold give in the room, at
+    /// their temperatures, W: with the floor they cover its loss.
+    pub radiators_w: f64,
     pub loops: u32,
     /// A loop's length with its way from the manifold and back, m.
     pub loop_len: f64,
@@ -597,9 +600,184 @@ pub struct RoomDesign {
     /// The way from the manifold: the doorways crossed and the rooms
     /// passed through.
     pub route: Option<crate::ufhroute::Route>,
+    /// A room with no loop of its own: the loops' pipes passing through
+    /// it, their length (supply and return), m, and what they give, W;
+    /// more than its loss and they are to be insulated there (George
+    /// 2026-11-28: "ak ju prekuruje, treba izolovat potrubia").
+    pub transit_len: f64,
+    pub transit_w: f64,
+    pub insulate: bool,
+    /// The spiral laid off a loop's return to heat it.
+    pub spiral: Option<ReturnSpiral>,
 }
 
-/// A doorway of a room.
+/// A spiral laid off a loop's return into a room with no loop of its own,
+/// to cover its loss (George 2026-11-28: "do ostatnych miestnosti ktore
+/// nemaju podlahovy okruh spravi spiralu z niektorej spiatocky").
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReturnSpiral {
+    /// The room whose loop's return it is.
+    pub host: ElementId,
+    /// Its spacing, m; its length with the two leads to the return, m;
+    /// what it gives, W.
+    pub spacing: f64,
+    pub length: f64,
+    pub output_w: f64,
+}
+
+/// The length of the polyline `pts` inside `outline`, m.
+fn inside_len(pts: &[glam::DVec2], outline: &[glam::DVec2]) -> f64 {
+    if outline.len() < 3 {
+        return 0.0;
+    }
+    let mut len = 0.0;
+    for w in pts.windows(2) {
+        let l = w[0].distance(w[1]);
+        let n = (l / 0.05).ceil().max(1.0) as usize;
+        for k in 0..n {
+            let m = w[0].lerp(w[1], (k as f64 + 0.5) / n as f64);
+            if polygon::contains(outline, m) {
+                len += l / n as f64;
+            }
+        }
+    }
+    len
+}
+
+/// The heat of a metre of pipe laid in a room's floor among others
+/// `t` apart, W/(m·K) of water over the room: KH · T (STN EN 1264-2,
+/// q = KH · ΔθH over the spacing T a pipe heats).
+fn per_m(norm: Option<&crate::ufhnorm::Norm>, x: &RoomDesign, t: f64, d: f64) -> f64 {
+    let kh = match norm {
+        Some(n) => n.k_h(t, x.su, x.lambda_e, x.finish_r, d),
+        None => k_h(t, x.finish_r, x.lambda_e, d),
+    };
+    kh * t
+}
+
+/// What the loops' pipes give the rooms with no loop they pass through,
+/// and the spirals off their returns that heat such rooms where a main
+/// route is drawn.
+fn transit_and_spirals(
+    s: &Settings,
+    pipe: &Pipe,
+    norm: Option<&crate::ufhnorm::Norm>,
+    ways: &[Feeds],
+    out: &mut [RoomDesign],
+) {
+    let d = pipe.outer_mm / 1000.0;
+    let ret = s.supply_c - s.sigma_k;
+    let outline = |id: ElementId| {
+        ways.iter()
+            .flat_map(|f| &f.rooms)
+            .find(|r| r.0 == id)
+            .map(|r| r.1.clone())
+            .unwrap_or_default()
+    };
+    // the pipes side by side in the floor (heatplan's PITCH)
+    let pitch = 0.05;
+    let ons: Vec<(Vec<glam::DVec2>, f64)> = out
+        .iter()
+        .filter(|x| x.on)
+        .filter_map(|x| Some((x.route.as_ref()?.points.clone(), x.loops as f64)))
+        .collect();
+    for x in out.iter_mut().filter(|x| !x.on) {
+        let o = outline(x.id);
+        let len: f64 = ons.iter().map(|(p, n)| inside_len(p, &o) * n).sum();
+        x.transit_len = 2.0 * len;
+        let k = per_m(norm, x, pitch, d);
+        x.transit_w = len * k * ((s.supply_c - x.ti).max(0.0) + (ret - x.ti).max(0.0));
+        x.insulate = x.transit_w > x.phi + 1e-6 && x.phi > 0.0;
+    }
+    // the spirals: where a main route is drawn, into each room with no
+    // loop that the pipes passing (uninsulated) and the radiators leave
+    // short, off the return of a loop still running on past its doorway
+    // on its side, the outermost there, so that its leads cross none
+    for i in 0..out.len() {
+        let x = &out[i];
+        if x.on || x.area <= 0.0 {
+            continue;
+        }
+        let Some(w) = x.route.as_ref() else { continue };
+        let Some(f) = ways
+            .iter()
+            .find(|f| f.main.len() >= 2 && f.rooms.iter().any(|r| r.0 == x.id))
+        else {
+            continue;
+        };
+        // the rooms the main route runs through: the pipes passing are
+        // what heats them, no spiral among them
+        if w.points.len() < 2 || inside_len(&f.main, &outline(x.id)) > 0.0 {
+            continue;
+        }
+        let have = x.radiators_w + if x.insulate { 0.0 } else { x.transit_w };
+        let short = x.phi - have;
+        if short <= x.phi * 0.02 {
+            continue;
+        }
+        let (s0, side) = w.peel;
+        let host = out
+            .iter()
+            .enumerate()
+            .filter(|(_, h)| h.on && h.route.is_some())
+            .filter_map(|(j, h)| {
+                let (sh, sd) = h.route.as_ref()?.peel;
+                (sh > s0 + 1e-6).then_some((j, sh, sd))
+            })
+            .min_by(|a, b| {
+                let rank = |sd: f64| {
+                    if sd == side {
+                        0
+                    } else if sd == 0.0 {
+                        1
+                    } else {
+                        2
+                    }
+                };
+                rank(a.2).cmp(&rank(b.2)).then(a.1.total_cmp(&b.1))
+            })
+            .or_else(|| {
+                out.iter()
+                    .enumerate()
+                    .filter(|(_, h)| h.on && h.route.is_some())
+                    .map(|(j, h)| (j, h.route.as_ref().map_or(0.0, |r| r.peel.0), 0.0))
+                    .max_by(|a, b| a.1.total_cmp(&b.1))
+            });
+        let Some((j, _, _)) = host else { continue };
+        // the return's water, nearly its own all the way
+        let dt = (ret - x.ti).max(0.0);
+        let gives = |t: f64| {
+            let kh = match norm {
+                Some(n) => n.k_h(t, x.su, x.lambda_e, x.finish_r, d),
+                None => k_h(t, x.finish_r, x.lambda_e, d),
+            };
+            let q = kh * dt;
+            (if x.q_limit > 0.0 { q.min(x.q_limit) } else { q }) * x.area
+        };
+        let t = x
+            .spacings
+            .iter()
+            .rev()
+            .copied()
+            .find(|t| gives(*t) >= short)
+            .unwrap_or(x.spacings.first().copied().unwrap_or(0.1));
+        let output = gives(t);
+        // the leads off the main route to the room and back
+        let lead = (w.length - s0).max(0.0);
+        let length = x.area / t + 2.0 * lead;
+        let host_id = out[j].id;
+        out[i].spiral = Some(ReturnSpiral {
+            host: host_id,
+            spacing: t,
+            length,
+            output_w: output,
+        });
+        let h = &mut out[j];
+        h.loop_len += length;
+        h.dp_kpa = loop_loss(pipe, h.flow_ls, h.loop_len);
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Doorway {
     pub id: ElementId,
@@ -855,7 +1033,13 @@ pub struct Feeds {
     pub level: ElementId,
     pub start: ElementId,
     pub from: glam::DVec2,
+    /// The manifold itself.
+    pub at: glam::DVec2,
     pub doors: Vec<crate::ufhroute::Door>,
+    /// The main route drawn from the manifold, none when none is, and the
+    /// storey's rooms with their outlines.
+    pub main: Vec<glam::DVec2>,
+    pub rooms: Vec<(ElementId, Vec<glam::DVec2>)>,
 }
 
 /// The ways from each storey's manifold.
@@ -889,7 +1073,10 @@ fn feeds(model: &Model, rooms: &[heatloss::RoomAt]) -> Vec<Feeds> {
             level: ob.level,
             start,
             from,
+            at: ob.to_plan(glam::DVec2::ZERO),
             doors: crate::ufhroute::doors(model, ob.level, &on),
+            main: ob.route.clone(),
+            rooms: on,
         });
     }
     out
@@ -1029,18 +1216,25 @@ fn one(
         }
     }
     // the maker's least bending radius (5 × Da): a 180° bend between
-    // neighbouring pipes of a meander or of an edge zone's serpentine has
-    // half their spacing for its radius; a double spiral turns only at
-    // its middle, at a whole spacing
+    // neighbouring pipes of a meander has half their spacing for its
+    // radius
     let bend = floor.as_ref().and_then(|f| f.spec.bend_d).and_then(|k| {
         let need = k * d;
         let layout = own.map(|u| u.layout).unwrap_or_default();
-        let mut have: Vec<f64> = edges.iter().map(|(_, t)| t / 2.0).collect();
-        have.push(match layout {
+        // a spiral turns by 90° and goes on into its edge zones closer,
+        // turning back once in its middle at a whole spacing; a meander
+        // turns back at each row, its edge zones' too
+        let meander = matches!(
+            layout,
             creabim_core::underfloor::Layout::Meander
-            | creabim_core::underfloor::Layout::DoubleMeander => spacing / 2.0,
-            _ => spacing,
-        });
+                | creabim_core::underfloor::Layout::DoubleMeander
+        );
+        let mut have: Vec<f64> = if meander {
+            edges.iter().map(|(_, t)| t / 2.0).collect()
+        } else {
+            vec![]
+        };
+        have.push(if meander { spacing / 2.0 } else { spacing });
         let r = have.into_iter().fold(f64::MAX, f64::min);
         (r + 1e-9 < need).then_some((r, need))
     });
@@ -1089,7 +1283,15 @@ fn one(
     // the way from the storey's manifold through the doorways, else as
     // the crow flies × 1.2
     let route = ways.iter().find(|f| f.level == r.level).and_then(|f| {
-        crate::ufhroute::route(&f.doors, f.start, f.from, hl.id, own.and_then(|u| u.door))
+        let by = own.and_then(|u| u.door);
+        if f.main.len() >= 2 {
+            // along the main route drawn (George 2026-11-28)
+            crate::ufhroute::along(
+                &f.main, f.at, f.from, &f.doors, &f.rooms, f.start, hl.id, by,
+            )
+        } else {
+            crate::ufhroute::route(&f.doors, f.start, f.from, hl.id, by)
+        }
     });
     let feed = match &route {
         Some(w) => w.length,
@@ -1160,6 +1362,7 @@ fn one(
         reduced_w,
         hole_area,
         covered,
+        radiators_w: 0.0,
         loops,
         loop_len,
         feed,
@@ -1174,6 +1377,10 @@ fn one(
         doors,
         door,
         route,
+        transit_len: 0.0,
+        transit_w: 0.0,
+        insulate: false,
+        spiral: None,
     })
 }
 
@@ -1300,7 +1507,6 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
             )
         })
         .collect();
-    open_spaces(model, &rooms, &mut out.rooms);
     for x in out.rooms.iter().filter(|x| x.on) {
         out.output_kw += x.covered / 1000.0;
         out.flow_ls += x.flow_ls * x.loops as f64;
@@ -1308,6 +1514,45 @@ pub fn design(model: &Model, o: &heatloss::Opts, s: &Settings) -> Design {
         out.loops += x.loops;
     }
     out.manifolds = manifold_designs(model, s, &out, &placed);
+    // the radiators on the manifold (a bathroom's ladder) cover the
+    // room's loss with its floor (George 2026-11-28)
+    for x in out.rooms.iter_mut() {
+        x.radiators_w = out
+            .manifolds
+            .iter()
+            .flat_map(|m| &m.radiators)
+            .filter(|f| !x.number.is_empty() && f.room == x.number)
+            .map(|f| f.output_w)
+            .sum::<f64>()
+            + 0.0;
+        if x.on && x.radiators_w > 0.0 {
+            x.ok = x.covered + x.radiators_w >= x.phi * 0.98;
+            x.space_covered = x.covered + x.radiators_w;
+        }
+    }
+    transit_and_spirals(s, &pipe, norm.as_ref(), &ways, &mut out.rooms);
+    for x in out.rooms.iter_mut().filter(|x| !x.on) {
+        x.space_covered = x.radiators_w
+            + if x.insulate { 0.0 } else { x.transit_w }
+            + x.spiral.as_ref().map_or(0.0, |r| r.output_w);
+        // the pipes passing give more than its loss: insulated there they
+        // are taken to give just that
+        if x.insulate {
+            x.space_covered = x.space_covered.max(x.phi);
+        }
+        x.ok = x.space_covered >= x.phi * 0.98;
+    }
+    if out.rooms.iter().any(|x| x.spiral.is_some()) {
+        // the loops the spirals lengthen
+        out.critical_kpa = out
+            .rooms
+            .iter()
+            .filter(|x| x.on)
+            .map(|x| x.dp_kpa)
+            .fold(0.0, f64::max);
+        out.manifolds = manifold_designs(model, s, &out, &placed);
+    }
+    open_spaces(model, &rooms, &mut out.rooms);
     // the worst manifold's index circuit, its valves wide open, and the
     // rest of the way to the source
     let worst = out
@@ -1370,10 +1615,6 @@ fn manifold_designs(
             if ob.level != level {
                 continue;
             }
-            let w = crate::heating::radiator_w(model, id, &hs).unwrap_or(0.0);
-            let q = w / (fluid.rho * 4180.0 * dt) * 1000.0;
-            let p = ob.to_plan(glam::DVec2::ZERO);
-            let length = at.map_or(0.0, |m| 2.0 * 1.2 * m.distance(p));
             let room = rooms
                 .iter()
                 .find(|x| {
@@ -1388,6 +1629,21 @@ fn manifold_designs(
                     _ => None,
                 })
                 .unwrap_or_default();
+            // its output in its room's air (a bathroom's 24 °C)
+            let ti = d
+                .rooms
+                .iter()
+                .find(|x| !room.is_empty() && x.number == room)
+                .map_or(hs.room_c, |x| x.ti);
+            let w = crate::heating::radiator_w(
+                model,
+                id,
+                &crate::heating::HeatSettings { room_c: ti, ..hs },
+            )
+            .unwrap_or(0.0);
+            let q = w / (fluid.rho * 4180.0 * dt) * 1000.0;
+            let p = ob.to_plan(glam::DVec2::ZERO);
+            let length = at.map_or(0.0, |m| 2.0 * 1.2 * m.distance(p));
             radiators.push(RadiatorFeed {
                 id,
                 room,
@@ -1907,6 +2163,52 @@ mod tests {
             assert!(u.bend_d.is_some_and(|k| k > 0.0), "{}", b.name);
             assert!(u.wall_mm.is_none_or(|w| w > 50.0), "{}", b.name);
         }
+    }
+
+    #[test]
+    fn a_radiator_on_the_manifold_covers_the_room_with_its_floor() {
+        use creabim_core::catalogue::radiators::{Panel, PanelKind};
+        use creabim_core::{Document, Element, Room, Transaction};
+        use glam::DVec2;
+        let mut doc = Document::from_model(creabim_core::sample::sample_house());
+        let level = doc.model().levels().next().unwrap().0.id;
+        let mut r = Room::new(level, DVec2::new(2.5, 3.0));
+        r.number = "1.01".into();
+        r.ufh = Some(Underfloor {
+            spacing: 0.3,
+            loops: 1,
+            ..Underfloor::default()
+        });
+        doc.commit(Transaction::new("room").insert(Element::new("Kúpeľňa", ElementKind::Room(r))))
+            .unwrap();
+        let plain = design(
+            doc.model(),
+            &heatloss::Opts::default(),
+            &Settings::default(),
+        );
+        let p = Panel {
+            kind: PanelKind::ALL[2],
+            height: 600,
+            length: 1600,
+        };
+        let (tx, rad) = creabim_core::objects::place(
+            doc.model(),
+            &p.object(),
+            level,
+            DVec2::new(2.5, 3.0),
+            0.0,
+        );
+        doc.commit(tx).unwrap();
+        let s = Settings {
+            radiators: vec![rad],
+            ..Settings::default()
+        };
+        let d = design(doc.model(), &heatloss::Opts::default(), &s);
+        let (a, b) = (&plain.rooms[0], &d.rooms[0]);
+        assert_eq!(a.radiators_w, 0.0);
+        assert!(b.radiators_w > 0.0, "{b:?}");
+        assert!((b.space_covered - (b.covered + b.radiators_w)).abs() < 1e-9);
+        assert_eq!(b.ok, b.covered + b.radiators_w >= b.phi * 0.98);
     }
 
     #[test]

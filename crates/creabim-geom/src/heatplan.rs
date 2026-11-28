@@ -87,6 +87,65 @@ pub fn tidy(pts: &[DVec2]) -> Vec<DVec2> {
     out
 }
 
+/// The point of the polyline `pts` nearest `p`, and how far along it, m.
+fn near_on(pts: &[DVec2], p: DVec2) -> (DVec2, f64) {
+    let mut best = (pts.first().copied().unwrap_or(p), 0.0, f64::MAX);
+    let mut run = 0.0;
+    for w in pts.windows(2) {
+        let d = w[1] - w[0];
+        let l = d.length();
+        let t = if l < 1e-12 {
+            0.0
+        } else {
+            ((p - w[0]).dot(d) / (l * l)).clamp(0.0, 1.0)
+        };
+        let q = w[0] + d * t;
+        if q.distance(p) < best.2 {
+            best = (q, run + l * t, q.distance(p));
+        }
+        run += l;
+    }
+    (best.0, best.1)
+}
+
+/// The point `s` m along the polyline `pts`.
+fn point_at(pts: &[DVec2], s: f64) -> DVec2 {
+    let mut run = 0.0;
+    for w in pts.windows(2) {
+        let l = w[0].distance(w[1]);
+        if run + l >= s {
+            return w[0].lerp(w[1], ((s - run) / l.max(1e-12)).clamp(0.0, 1.0));
+        }
+        run += l;
+    }
+    pts.last().copied().unwrap_or_default()
+}
+
+/// The polyline `pts` up to `a` m along it and on from `b`.
+fn cut_at(pts: &[DVec2], a: f64, b: f64) -> (Vec<DVec2>, Vec<DVec2>) {
+    let (mut first, mut last) = (vec![], vec![]);
+    let mut run = 0.0;
+    for (i, w) in pts.windows(2).enumerate() {
+        let l = w[0].distance(w[1]);
+        if i == 0 && a > 0.0 {
+            first.push(w[0]);
+        }
+        if run < a && run + l >= a {
+            first.push(point_at(pts, a));
+        } else if run + l < a {
+            first.push(w[1]);
+        }
+        if run <= b && run + l > b {
+            last.push(point_at(pts, b));
+            last.push(w[1]);
+        } else if run > b {
+            last.push(w[1]);
+        }
+        run += l;
+    }
+    (first, last)
+}
+
 /// `pts` moved `d` to its left, each corner mitred.
 pub fn offset(pts: &[DVec2], d: f64) -> Vec<DVec2> {
     let n = pts.len();
@@ -404,6 +463,25 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
             }
             strips(&mut out, *t, &ring, FIELD, Some((1.5, 1.0)), mm);
         }
+        // the pipes passing give it more than its loss: insulated there
+        // (George 2026-11-28)
+        if design.rooms.iter().any(|x| x.id == *t && x.insulate) {
+            out.push(PlanItem::Annotation {
+                id: *t,
+                item: Box::new(Annotation {
+                    shape: Shape::Along {
+                        at: r.at + DVec2::Y * -5.0 * mm,
+                        angle: 0.0,
+                    },
+                    text: creabim_core::words::tr("Pipes passing through insulated"),
+                    look: TextLook {
+                        size: TEXT,
+                        ..Default::default()
+                    },
+                    mm,
+                }),
+            });
+        }
     }
     // each room's coils laid once, for its feeds and its loops
     let coils: std::collections::HashMap<ElementId, Vec<creabim_core::underfloor::Spiral>> = rooms
@@ -421,8 +499,48 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
             )
         })
         .collect();
+    // each loop's place in the bundle side by side along the way: those
+    // peeling off to the left on the left, the first off outermost, those
+    // to the right likewise on the right, those running on to its end in
+    // the middle, so no pair crosses another as it peels off; the
+    // manifold's outlets numbered as they come out, 1 on the left as one
+    // faces it (George 2026-11-28)
+    let mut order: Vec<(ElementId, usize, f64, f64)> = vec![];
+    for (e, _, _, _) in &rooms {
+        let Some(w) = design
+            .rooms
+            .iter()
+            .find(|x| x.id == e.id)
+            .and_then(|x| x.route.as_ref())
+        else {
+            continue;
+        };
+        for j in 0..coils.get(&e.id).map_or(0, |l| l.len()) {
+            order.push((e.id, j, w.peel.0, w.peel.1));
+        }
+    }
+    let rank = |o: &(ElementId, usize, f64, f64)| match o.3 {
+        x if x > 0.0 => (0, o.2),
+        x if x < 0.0 => (2, -o.2),
+        _ => (1, o.2),
+    };
+    order.sort_by(|a, b| {
+        let (ra, rb) = (rank(a), rank(b));
+        ra.0.cmp(&rb.0).then(ra.1.total_cmp(&rb.1))
+    });
+    let slots = order.len() * 2;
+    let slot_of = |room: ElementId, j: usize| {
+        order
+            .iter()
+            .position(|o| o.0 == room && o.1 == j)
+            .unwrap_or(0)
+    };
+    // the outlet of each loop: facing the manifold its left is the pipes'
+    // right as they leave it
+    let outlet = |room: ElementId, j: usize| order.len() - slot_of(room, j);
     // each loop's supply and return from the manifold, side by side
-    let mut k = 0usize;
+    let mut outlets: Vec<(ElementId, DVec2, usize)> = vec![];
+    let mut rets: Vec<(ElementId, usize, Vec<DVec2>)> = vec![];
     for (e, _, u, shape) in &rooms {
         let Some(w) = design
             .rooms
@@ -435,11 +553,12 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
         let Some(loops) = coils.get(&e.id) else {
             continue;
         };
-        for sp in loops {
+        for (j, sp) in loops.iter().enumerate() {
             let (Some(a), Some(b)) = (sp.supply.first(), sp.ret.last()) else {
                 continue;
             };
-            let off = (k as f64 * 2.0 + 0.5) * PITCH;
+            let idx = slot_of(e.id, j) * 2;
+            let off = ((slots as f64 - 1.0) / 2.0 - idx as f64 - 1.0) * PITCH;
             // to the loop's ends, the last step straight onto them
             // along the way side by side, the last steps square onto
             // the loop's end
@@ -449,13 +568,25 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
                 let o = offset(body, d);
                 square(&o, end)
             };
-            let sup = along(*a, off);
-            let ret = along(*b, off + PITCH);
+            // the return outermost on the side it peels off to, so that a
+            // spiral off it crosses no other pipe
+            let right = w.peel.1 < 0.0;
+            let (so, ro) = if right {
+                (off + PITCH, off)
+            } else {
+                (off, off + PITCH)
+            };
+            let sup = along(*a, so);
+            let ret = along(*b, ro);
+            // the outlet's number at the manifold, between its two pipes
+            if let (Some(p), Some(q)) = (sup.first(), ret.first()) {
+                let u = sup
+                    .get(1)
+                    .map_or(DVec2::Y, |n| (*n - *p).normalize_or_zero());
+                outlets.push((e.id, (*p + *q) / 2.0 - u * 1.8 * mm, outlet(e.id, j)));
+            }
             // the pipes in sleeves where they cross a doorway's joint
-            for j in 0..w.doors.len() {
-                let (Some(p), Some(q)) = (w.points.get(1 + 2 * j), w.points.get(2 + 2 * j)) else {
-                    continue;
-                };
+            for [p, q] in &w.sides {
                 let u = (*q - *p).normalize_or_zero();
                 let ext = SLEEVE_HALF;
                 for d in [off, off + PITCH] {
@@ -491,9 +622,125 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
                 }
             }
             strips(&mut out, e.id, &sup, SUPPLY, None, mm);
-            strips(&mut out, e.id, &ret, RETURN, Some(DASH), mm);
-            k += 1;
+            rets.push((e.id, j, ret));
         }
+    }
+    // the spirals off a loop's return into rooms with no loop of their
+    // own (George 2026-11-28): the return cut where it passes the room's
+    // way off the route, two leads in to the spiral and back out
+    for x in design.rooms.iter().filter(|x| !x.on) {
+        let (Some(sp), Some(w)) = (x.spiral.as_ref(), x.route.as_ref()) else {
+            continue;
+        };
+        let Some(e) = model.get(x.id) else { continue };
+        let ElementKind::Room(r) = &e.kind else {
+            continue;
+        };
+        if r.level != level {
+            continue;
+        }
+        let Some(shape) = room::shape_of(model, r) else {
+            continue;
+        };
+        // the host room's loop outermost on the room's side, and of its
+        // return the piece passing the way off (it may be cut already)
+        let side = w.peel.1;
+        let js: Vec<usize> = order
+            .iter()
+            .filter(|o| o.0 == sp.host)
+            .map(|o| o.1)
+            .collect();
+        let Some(j) = (if side < 0.0 {
+            js.iter().copied().max_by_key(|j| slot_of(sp.host, *j))
+        } else {
+            js.iter().copied().min_by_key(|j| slot_of(sp.host, *j))
+        }) else {
+            continue;
+        };
+        let Some(k) = rets
+            .iter()
+            .enumerate()
+            .filter(|(_, h)| h.0 == sp.host && h.1 == j && h.2.len() > 1)
+            .min_by(|a, b| {
+                near_on(&a.1 .2, w.peel_at)
+                    .0
+                    .distance(w.peel_at)
+                    .total_cmp(&near_on(&b.1 .2, w.peel_at).0.distance(w.peel_at))
+            })
+            .map(|(k, _)| k)
+        else {
+            continue;
+        };
+        let u = creabim_core::underfloor::Underfloor {
+            spacing: sp.spacing,
+            loops: 1,
+            layout: creabim_core::underfloor::Layout::Spiral,
+            ..Default::default()
+        };
+        let Some(coil) =
+            creabim_core::underfloor::loops_from(&shape.outline, &u, w.points.last().copied())
+                .into_iter()
+                .next()
+        else {
+            continue;
+        };
+        let (Some(a), Some(b)) = (coil.supply.first().copied(), coil.ret.last().copied()) else {
+            continue;
+        };
+        // where the way to the room leaves the main route, the return
+        // nearest it
+        let peel = w.peel_at;
+        let (at, run) = near_on(&rets[k].2, peel);
+        let _ = at;
+        let (p0, p1) = (
+            point_at(&rets[k].2, run - PITCH),
+            point_at(&rets[k].2, run + PITCH),
+        );
+        // the way in after the route, from the return's two cut ends
+        let tail: Vec<DVec2> = {
+            let i = w
+                .points
+                .iter()
+                .position(|p| p.distance(peel) < 1e-6)
+                .unwrap_or(0);
+            w.points[i..].to_vec()
+        };
+        let lead = |from: DVec2, end: DVec2, d: f64| {
+            let mut c = vec![from];
+            c.extend(offset(&tail, d).into_iter().skip(1));
+            tidy(&square(&c[..c.len().saturating_sub(1)], end))
+        };
+        let l_in = lead(p0, a, PITCH / 2.0);
+        let l_out = lead(p1, b, -PITCH / 2.0);
+        let cut = cut_at(&rets[k].2, run - PITCH, run + PITCH);
+        rets[k].2 = cut.0;
+        rets.push((sp.host, j, cut.1));
+        for piece in [&l_in, &l_out] {
+            strips(&mut out, x.id, piece, RETURN, Some(DASH), mm);
+        }
+        for (pts, _) in coil.pieces() {
+            strips(&mut out, x.id, pts, RETURN, Some(DASH), mm);
+        }
+    }
+    for (id, _, ret) in &rets {
+        strips(&mut out, *id, ret, RETURN, Some(DASH), mm);
+    }
+    for (id, at, n) in &outlets {
+        out.push(PlanItem::Annotation {
+            id: *id,
+            item: Box::new(Annotation {
+                shape: Shape::Along {
+                    at: *at,
+                    angle: 0.0,
+                },
+                text: n.to_string(),
+                look: TextLook {
+                    size: TEXT * 0.8,
+                    ..Default::default()
+                },
+                mm,
+            }),
+        });
     }
     for (e, r, u, shape) in &rooms {
         let Some(loops) = coils.get(&e.id) else {
@@ -514,10 +761,20 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
             strips(&mut out, e.id, &j, JOINT, Some(JOINT_DASH), mm);
         }
         let n = loops.len().max(1);
-        let which = if n > 1 {
-            format!("{}-{}", circuits + 1, circuits + n)
-        } else {
-            format!("{}", circuits + 1)
+        let mut nums: Vec<usize> = (0..loops.len())
+            .filter(|j| order.iter().any(|o| o.0 == e.id && o.1 == *j))
+            .map(|j| outlet(e.id, j))
+            .collect();
+        nums.sort();
+        let which = match nums.as_slice() {
+            [] if n > 1 => format!("{}-{}", circuits + 1, circuits + n),
+            [] => format!("{}", circuits + 1),
+            [one] => format!("{one}"),
+            many => many
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
         };
         circuits += n;
         tables.push((

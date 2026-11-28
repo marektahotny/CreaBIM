@@ -9257,5 +9257,22 @@
  "The 180° bends between neighbouring pipes are tighter than the least bending radius the maker gives": "Ohyby o 180° mezi sousedními trubkami jsou těsnější než nejmenší poloměr ohybu, který udává výrobce",
  "guide lines": "vodicí čáry",
  "bend": "ohyb",
- "from the wall": "od stěny"
+ "from the wall": "od stěny",
+ "the radiators": "radiátory",
+ "together": "dohromady",
+ "Nothing heats the room: no underfloor heating loop and no radiator on the manifold cover its loss of": "Místnost nic nevytápí: její ztrátu nepokrývá žádný okruh podlahového vytápění ani radiátor na rozdělovači, ztráta",
+ "the pipes passing through": "procházející potrubí",
+ "more than its loss: insulate them there": "více než její ztráta: zde je třeba je izolovat",
+ "a spiral off the return of the loop of": "spirála ze zpátečky okruhu místnosti",
+ "spacing": "rozteč",
+ "Its loss is not covered:": "Její ztráta není pokryta:",
+ "Main route": "Hlavní trasa",
+ "Main route drawn.": "Hlavní trasa nakreslena.",
+ "Main route changed": "Hlavní trasa změněna",
+ "The connecting pipes are laid along it. Ctrl+Z to undo.": "Připojovací potrubí se vedou po ní. Upraví se tažením jejích bodů při vybraném rozdělovači. Ctrl+Z vrátí zpět.",
+ "Place a manifold on the storey first.": "Nejprve osaďte na podlaží rozdělovač.",
+ "Sketch with a polyline from the manifold where the connecting pipes go, mostly along the corridor. It is not printed; edit it like a line and the pipes follow it.": "Načrtněte lomenou čarou od rozdělovače, kudy vedou připojovací potrubí, hlavně chodbou. Netiskne se; upravuje se jako čára (při vybraném rozdělovači) a potrubí se jí vždy přizpůsobí.",
+ "click from the manifold along the corridor where the connecting pipes go; Enter finishes it.": "klikejte od rozdělovače po chodbě, kudy vedou připojovací potrubí; Enter ji ukončí.",
+ "Main route ({} points): click from the manifold along the corridor where the connecting pipes go. Enter, right-click or a double-click finishes it. Backspace takes back a point, Esc cancels.": "Hlavní trasa ({} bodů): klikejte od rozdělovače po chodbě, kudy vedou připojovací potrubí. Enter, pravé tlačítko nebo dvojklik ji ukončí. Backspace vrátí bod, Esc zruší.",
+ "Pipes passing through insulated": "Procházející potrubí izolované"
 }

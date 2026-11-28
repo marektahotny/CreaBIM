@@ -17,18 +17,21 @@ pub struct EdgeLine {
     pub level: ElementId,
     pub points: Vec<DVec2>,
     pub closed: bool,
+    /// A manifold's main route rather than an edge zone.
+    pub route: bool,
 }
 
 thread_local! {
     static EDGE: std::cell::RefCell<Option<EdgeLine>> = const { std::cell::RefCell::new(None) };
 }
 
-fn stash_edge(level: ElementId, points: Vec<DVec2>, closed: bool) {
+fn stash_edge(level: ElementId, points: Vec<DVec2>, closed: bool, route: bool) {
     EDGE.with(|e| {
         *e.borrow_mut() = Some(EdgeLine {
             level,
             points,
             closed,
+            route,
         })
     });
 }
@@ -165,9 +168,24 @@ impl Outline {
             == Some(crate::roomtool::Space::UfhZone(
                 crate::roomtool::UfhZone::Edge,
             ))
+            || self.main_route()
+    }
+
+    /// A manifold's main route of the underfloor heating's pipes.
+    fn main_route(&self) -> bool {
+        self.space
+            == Some(crate::roomtool::Space::UfhZone(
+                crate::roomtool::UfhZone::Route,
+            ))
     }
 
     pub fn hint(&self) -> String {
+        if self.main_route() {
+            return format!(
+                "Main route ({} points): click from the manifold along the corridor where the connecting pipes go. Enter, right-click or a double-click finishes it. Backspace takes back a point, Esc cancels.",
+                self.points.len()
+            );
+        }
         if self.edge_line() {
             return format!(
                 "Edge zone ({} points): click along the edge of the heated field, a line or a polyline. Enter, right-click or a double-click finishes it, then its width is asked. Backspace takes back a point, Esc cancels.",
@@ -372,7 +390,11 @@ impl Outline {
                     None,
                 ));
             }
-            stash_edge(self.level, self.points, closed);
+            let route = self.main_route();
+            stash_edge(self.level, self.points, closed, route);
+            if route {
+                return Ok(("Main route drawn.".into(), None));
+            }
             return Ok((
                 "Edge zone drawn: set its width and spacing in the dialog.".into(),
                 None,

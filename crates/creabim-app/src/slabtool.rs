@@ -304,7 +304,10 @@ pub fn click(
 ) -> Result<(), creabim_core::ModelError> {
     // an edge zone is only a line or a polyline (George 2026-11-28)
     if state.tool == crate::planview::Tool::UfhZone
-        && state.ufh_zone == crate::roomtool::UfhZone::Edge
+        && matches!(
+            state.ufh_zone,
+            crate::roomtool::UfhZone::Edge | crate::roomtool::UfhZone::Route
+        )
     {
         state.slab_mode = SlabMode::Polygon;
         state.pending = None;

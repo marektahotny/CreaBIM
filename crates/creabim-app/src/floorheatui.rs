@@ -89,6 +89,15 @@ impl CreaBimApp {
         ) {
             self.plan.slab_mode = crate::slabtool::SlabMode::Polygon;
         }
+        if kind == UfhZone::Route {
+            self.plan.slab_mode = crate::slabtool::SlabMode::Polygon;
+            self.status = format!(
+                "{}: {}",
+                crate::i18n::tr(kind.label()),
+                crate::i18n::tr("click from the manifold along the corridor where the connecting pipes go; Enter finishes it.")
+            );
+            return;
+        }
         if kind == UfhZone::Edge {
             self.plan.slab_mode = crate::slabtool::SlabMode::Polygon;
             self.status = format!(
@@ -255,6 +264,14 @@ impl CreaBimApp {
                             draw = Some(k);
                         }
                     }
+                    ui.separator();
+                    if ui
+                        .button(t(UfhZone::Route.label()))
+                        .on_hover_text(t("Sketch with a polyline from the manifold where the connecting pipes go, mostly along the corridor. It is not printed; edit it like a line and the pipes follow it."))
+                        .clicked()
+                    {
+                        draw = Some(UfhZone::Route);
+                    }
                 });
                 if !d.norm {
                     ui.colored_label(
@@ -345,7 +362,84 @@ impl CreaBimApp {
                         row.text(num(x.phi, 0));
                         let q = format!("{} / {}", num(x.q, 0), num(x.q_req, 0));
                         let space_ok = x.space_covered >= x.space_phi * 0.98;
-                        if x.ok {
+                        if !x.on {
+                            // no loop in it: the pipes passing, a spiral off a
+                            // return or a radiator heat it, else its loss is
+                            // not covered (George 2026-11-28)
+                            let rq = x.space_covered / x.area.max(1e-6);
+                            let txt = format!("{} / {}", num(rq, 0), num(x.q_req, 0));
+                            let mut parts = vec![];
+                            if x.transit_w > 0.0 {
+                                parts.push(format!(
+                                    "{} {} m: {} W{}",
+                                    t("the pipes passing through"),
+                                    num(x.transit_len, 1),
+                                    num(x.transit_w, 0),
+                                    if x.insulate {
+                                        format!(" ({})", t("more than its loss: insulate them there"))
+                                    } else {
+                                        String::new()
+                                    }
+                                ));
+                            }
+                            if let Some(sp) = &x.spiral {
+                                let host = d
+                                    .rooms
+                                    .iter()
+                                    .find(|h| h.id == sp.host)
+                                    .map_or(String::new(), |h| h.number.clone());
+                                parts.push(format!(
+                                    "{} {} ({} {} mm, {} m): {} W",
+                                    t("a spiral off the return of the loop of"),
+                                    host,
+                                    t("spacing"),
+                                    num(sp.spacing * 1000.0, 0),
+                                    num(sp.length, 1),
+                                    num(sp.output_w, 0)
+                                ));
+                            }
+                            if x.radiators_w > 0.0 {
+                                parts.push(format!("{} {} W", t("the radiators"), num(x.radiators_w, 0)));
+                            }
+                            let how = format!(
+                                "{}\n{} {} W {} {} W",
+                                parts.join("\n"),
+                                t("together"),
+                                num(x.space_covered, 0),
+                                t("of"),
+                                num(x.phi, 0)
+                            );
+                            row.cell(|ui| {
+                                if x.ok {
+                                    ui.label(txt).on_hover_text(how.trim_start().to_string());
+                                } else if parts.is_empty() {
+                                    ui.colored_label(ui.visuals().warn_fg_color, txt)
+                                        .on_hover_text(format!(
+                                            "{} {} W",
+                                            t("Nothing heats the room: no underfloor heating loop and no radiator on the manifold cover its loss of"),
+                                            num(x.phi, 0),
+                                        ));
+                                } else {
+                                    ui.colored_label(ui.visuals().warn_fg_color, txt)
+                                        .on_hover_text(format!("{}\n{}", t("Its loss is not covered:"), how.trim_start()));
+                                }
+                            });
+                        } else if x.ok && x.radiators_w > 0.0 {
+                            // the floor and the radiators on the manifold together
+                            row.cell(|ui| {
+                                ui.label(format!("{q} +")).on_hover_text(format!(
+                                    "{} {} W, {} {} W: {} {} W {} {} W",
+                                    t("The floor gives"),
+                                    num(x.covered, 0),
+                                    t("the radiators"),
+                                    num(x.radiators_w, 0),
+                                    t("together"),
+                                    num(x.covered + x.radiators_w, 0),
+                                    t("of"),
+                                    num(x.phi, 0),
+                                ));
+                            });
+                        } else if x.ok {
                             row.text(q);
                         } else if !x.open_to.is_empty() && space_ok {
                             // short alone, but covered by the space it is open to
@@ -361,9 +455,18 @@ impl CreaBimApp {
                         } else {
                             row.cell(|ui| {
                                 ui.colored_label(ui.visuals().warn_fg_color, q).on_hover_text(format!(
-                                    "{} {} W {} {} W (qG {} W/m²)",
+                                    "{} {} W{} {} {} W (qG {} W/m²)",
                                     t("The floor gives"),
                                     num(x.covered, 0),
+                                    if x.radiators_w > 0.0 {
+                                        format!(
+                                            ", {} {} W",
+                                            t("the radiators"),
+                                            num(x.radiators_w, 0)
+                                        )
+                                    } else {
+                                        String::new()
+                                    },
                                     t("of"),
                                     num(x.phi, 0),
                                     num(x.q_limit, 0),
@@ -1275,6 +1378,13 @@ impl CreaBimApp {
         let Some(line) = crate::outline::take_edge() else {
             return;
         };
+        if line.route {
+            self.status = match self.commit_ufh_route(&line) {
+                Ok(m) => m,
+                Err(e) => format!("Couldn't do that: {e}"),
+            };
+            return;
+        }
         let model = self.doc.model();
         let (a, b) = (line.points[0], line.points[1]);
         let mid = (a + b) / 2.0;
@@ -1393,6 +1503,45 @@ impl CreaBimApp {
             Ok(m) => m,
             Err(e) => e.to_string(),
         };
+    }
+
+    /// Keeps a main route sketched from the storey's manifold on it: the
+    /// connecting pipes are laid along it (George 2026-11-28).
+    fn commit_ufh_route(
+        &mut self,
+        line: &crate::outline::EdgeLine,
+    ) -> Result<String, creabim_core::ModelError> {
+        let model = self.doc.model();
+        let start = line.points[0];
+        let found = model
+            .iter()
+            .filter(|e| {
+                creabim_core::fixture::family_of(model, e)
+                    .is_some_and(creabim_core::fixture::is_manifold)
+            })
+            .filter_map(|e| match &e.kind {
+                ElementKind::Object(ob) if ob.level == line.level => {
+                    Some((e.clone(), ob.to_plan(glam::DVec2::ZERO).distance(start)))
+                }
+                _ => None,
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1));
+        let Some((before, _)) = found else {
+            return Ok(crate::i18n::tr("Place a manifold on the storey first.").to_string());
+        };
+        let mut after = before.clone();
+        if let ElementKind::Object(ob) = &mut after.kind {
+            ob.route = line.points.clone();
+        }
+        let id = before.id;
+        self.doc
+            .commit(Transaction::new("Main route").replace(before, after))?;
+        self.selection.only(id);
+        Ok(format!(
+            "{} {}",
+            crate::i18n::tr("Main route drawn."),
+            crate::i18n::tr("The connecting pipes are laid along it. Ctrl+Z to undo.")
+        ))
     }
 
     fn commit_ufh_edge(&mut self, d: &EdgeDraft) -> Result<String, creabim_core::ModelError> {
