@@ -113,7 +113,15 @@ impl CreaBimApp {
         let t = crate::i18n::tr;
         let num = crate::i18n::num;
         let o = self.heat_opts();
-        let d = floorheat::design(self.doc.model(), &o, &s);
+        let rev = self.doc.model().revision();
+        let d = match &self.floor_heat_design {
+            Some((r, s0, o0, d)) if *r == rev && *s0 == s && *o0 == o => d.clone(),
+            _ => {
+                let d = std::sync::Arc::new(floorheat::design(self.doc.model(), &o, &s));
+                self.floor_heat_design = Some((rev, s.clone(), o, d.clone()));
+                d
+            }
+        };
         let found = creabim_services::calcresults::floor_heat(&d).with_settings(&s);
         let written = self.is_written(&found);
         let mut write_now = false;

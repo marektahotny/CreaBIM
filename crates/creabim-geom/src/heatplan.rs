@@ -309,6 +309,33 @@ fn num(x: f64, places: usize) -> String {
 /// The underfloor heating of the rooms of `level` in a plan where `mm`
 /// drawing units make a paper millimetre; `view`'s tables of the rooms
 /// (their tags) where they were moved to.
+/// The model's underfloor heating design as the window last wrote it,
+/// worked out once per revision (every heating plan of every storey and
+/// sheet draws from it).
+fn design_of(model: &Model) -> std::sync::Arc<floorheat::Design> {
+    use std::sync::{Arc, Mutex};
+    static CACHE: Mutex<Option<(u64, u64, Arc<floorheat::Design>)>> = Mutex::new(None);
+    let key = (model as *const Model as u64, model.revision());
+    if key.1 != 0 {
+        if let Some((p, r, d)) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            if (*p, *r) == key {
+                return d.clone();
+            }
+        }
+    }
+    let settings: floorheat::Settings =
+        creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
+    let d = Arc::new(floorheat::design(
+        model,
+        &heatloss::Opts::default(),
+        &settings,
+    ));
+    if key.1 != 0 {
+        *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((key.0, key.1, d.clone()));
+    }
+    d
+}
+
 pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) -> Vec<PlanItem> {
     let mut rooms: Vec<_> = model
         .iter()
@@ -324,9 +351,9 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
     }
     rooms.sort_by(|a, b| (&a.1.number, &a.0.name).cmp(&(&b.1.number, &b.0.name)));
     // as the window last wrote it
+    let design = design_of(model);
     let settings: floorheat::Settings =
         creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
-    let design = floorheat::design(model, &heatloss::Opts::default(), &settings);
     // as many loops drawn as the design lays (George 2026-11-28)
     for rm in rooms.iter_mut() {
         if let Some(x) = design.rooms.iter().find(|x| x.id == rm.0.id && x.on) {
@@ -378,6 +405,22 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
             strips(&mut out, *t, &ring, FIELD, Some((1.5, 1.0)), mm);
         }
     }
+    // each room's coils laid once, for its feeds and its loops
+    let coils: std::collections::HashMap<ElementId, Vec<creabim_core::underfloor::Spiral>> = rooms
+        .iter()
+        .map(|(e, _, u, shape)| {
+            let from = design
+                .rooms
+                .iter()
+                .find(|x| x.id == e.id)
+                .and_then(|x| x.route.as_ref())
+                .and_then(|w| w.points.last().copied());
+            (
+                e.id,
+                creabim_core::underfloor::loops_from(&shape.outline, u, from),
+            )
+        })
+        .collect();
     // each loop's supply and return from the manifold, side by side
     let mut k = 0usize;
     for (e, _, u, shape) in &rooms {
@@ -389,14 +432,10 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
         else {
             continue;
         };
-        let from = design
-            .rooms
-            .iter()
-            .find(|x| x.id == e.id)
-            .and_then(|x| x.route.as_ref())
-            .and_then(|w| w.points.last().copied());
-        let loops = creabim_core::underfloor::loops_from(&shape.outline, u, from);
-        for sp in &loops {
+        let Some(loops) = coils.get(&e.id) else {
+            continue;
+        };
+        for sp in loops {
             let (Some(a), Some(b)) = (sp.supply.first(), sp.ret.last()) else {
                 continue;
             };
@@ -457,14 +496,10 @@ pub fn items(model: &Model, level: ElementId, view: Option<ElementId>, mm: f64) 
         }
     }
     for (e, r, u, shape) in &rooms {
-        let from = design
-            .rooms
-            .iter()
-            .find(|x| x.id == e.id)
-            .and_then(|x| x.route.as_ref())
-            .and_then(|w| w.points.last().copied());
-        let loops = creabim_core::underfloor::loops_from(&shape.outline, u, from);
-        for sp in &loops {
+        let Some(loops) = coils.get(&e.id) else {
+            continue;
+        };
+        for sp in loops {
             for (pts, supply) in sp.pieces() {
                 if supply {
                     strips(&mut out, e.id, pts, SUPPLY, None, mm);

@@ -487,6 +487,14 @@ pub struct CreaBimApp {
     condens: Option<condensui::Condens>,
     /// The underfloor heating window's settings, while it is open.
     floor_heat: Option<creabim_services::floorheat::Settings>,
+    /// The floor heating window's design, worked out once per model
+    /// revision and what it was given, not every frame.
+    floor_heat_design: Option<(
+        u64,
+        creabim_services::floorheat::Settings,
+        creabim_services::heatloss::Opts,
+        std::sync::Arc<creabim_services::floorheat::Design>,
+    )>,
     /// An edge zone's line drawn, its width and spacing asked.
     ufh_edge: Option<floorheatui::EdgeDraft>,
     /// A calculation window stepped aside while its object is placed.
@@ -746,6 +754,7 @@ impl CreaBimApp {
             midea_in: None,
             table30: None,
             floor_heat: None,
+            floor_heat_design: None,
             ufh_edge: None,
             parked: None,
             radiators: None,

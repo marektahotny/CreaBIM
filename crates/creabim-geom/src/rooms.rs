@@ -161,59 +161,12 @@ pub fn plan_items(model: &Model, view: &View, level: ElementId, cut_height: f64)
     let mut out = vec![];
     // drawn over the rooms' floors
     let mut loops = vec![];
-    let ufh_shown = creabim_core::viewmodes::DisplayMode::of(view)
-        == creabim_core::viewmodes::DisplayMode::Services
-        && view
-            .trade
-            .is_none_or(|t| t == creabim_core::viewmodes::Trade::Heating);
-    // as many loops drawn as the design lays (George 2026-11-28)
-    let design = (ufh_shown
-        && !view.ceiling_plan
-        && model.iter().any(
-            |e| matches!(&e.kind, ElementKind::Room(r) if r.level == level && r.ufh.is_some()),
-        ))
-    .then(|| {
-        let settings: creabim_services::floorheat::Settings =
-            creabim_core::results::settings_of(model, "floorheat").unwrap_or_default();
-        creabim_services::floorheat::design(
-            model,
-            &creabim_services::heatloss::Opts::default(),
-            &settings,
-        )
-    });
     for e in model.iter() {
         match &e.kind {
             ElementKind::Room(r) if r.level == level => {
                 if let Some(s) = room::shape_of(model, r) {
-                    // underfloor heating loops: the supply in full lines,
-                    // the return dashed beside it
-                    // (the heating's, all the trades' and the coordination
-                    // drawings' alone: George 2026-11-27)
-                    if let (Some(u), false, true) = (&r.ufh, view.ceiling_plan, ufh_shown) {
-                        let mut u = u.clone();
-                        if let Some(x) = design
-                            .as_ref()
-                            .and_then(|d| d.rooms.iter().find(|x| x.id == e.id && x.on))
-                        {
-                            u.loops = x.loops.max(1);
-                            u.wall = x.wall;
-                        }
-                        let u = &u;
-                        for sp in creabim_core::underfloor::loops(&s.outline, u) {
-                            for (pts, supply) in sp.pieces() {
-                                let pen = if supply { Pen::Symbol } else { Pen::Hidden };
-                                for w in pts.windows(2) {
-                                    loops.push(PlanItem::Line {
-                                        id: e.id,
-                                        pen,
-                                        a: w[0],
-                                        b: w[1],
-                                    });
-                                }
-                            }
-                        }
-                        crate::heatplan::zone_items(&mut loops, e.id, u, view.scale / 1000.0);
-                    }
+                    // underfloor heating loops are the heating plan's
+                    // (heatplan::items), drawn once there
                     // a fire drawing: the zone's wash and its code
                     let zone = r.fire_zone.trim();
                     let fire = view.fire_zones && !zone.is_empty();
