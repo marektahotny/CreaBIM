@@ -63,6 +63,7 @@ mod theme;
 mod tooltabs;
 mod trace;
 mod tracker;
+mod ufhzonedit;
 mod ui_model;
 mod units;
 mod viewcube;

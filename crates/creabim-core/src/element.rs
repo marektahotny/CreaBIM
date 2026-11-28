@@ -1104,6 +1104,9 @@ pub struct Tag {
     /// label point, moved on its own, on a leader once outside the room.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ufh: bool,
+    /// Its texts cover what is drawn under them (George 2026-11-28).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub back: bool,
 }
 
 impl Tag {
@@ -1122,6 +1125,7 @@ impl Tag {
             placed: false,
             underside: false,
             ufh: false,
+            back: false,
         }
     }
 }

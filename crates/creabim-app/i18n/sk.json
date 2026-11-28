@@ -9246,5 +9246,12 @@
   "short by": "chýba",
   "Close the spacing in": "Zhustite rozostup v",
   "to give": "aby dávala",
-  "now": "teraz"
+  "now": "teraz",
+  "Underfloor heating zone removed": "Zóna podlahového vykurovania zmazaná",
+  "Underfloor heating zone moved": "Zóna podlahového vykurovania posunutá",
+  "Underfloor heating zone reshaped": "Tvar zóny podlahového vykurovania zmenený",
+  "Edge zone width changed": "Šírka okrajovej zóny zmenená",
+  "Zone picked: drag it to move it, a corner to reshape it, an edge zone's dashed line to change its width; Delete takes it away.": "Zóna vybraná: ťahom ju posuniete, ťahom za roh zmeníte tvar, ťahom za čiarkovanú čiaru okrajovej zóny zmeníte jej šírku; Delete ju zmaže.",
+  "Its texts cover what is drawn under them": "Texty zakryjú to, čo je nakreslené pod nimi",
+  "Tag text background": "Pozadie textu označenia"
 }

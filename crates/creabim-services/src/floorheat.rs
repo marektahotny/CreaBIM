@@ -495,14 +495,14 @@ fn open_spaces(model: &Model, rooms: &[heatloss::RoomAt<'_>], designs: &mut [Roo
         t.0 += x.phi;
         t.1 += x.covered;
     }
-    for i in 0..designs.len() {
-        if !designs[i].on || designs[i].open_to.is_empty() {
+    for (i, x) in designs.iter_mut().enumerate() {
+        if !x.on || x.open_to.is_empty() {
             continue;
         }
         let r = root(&mut group, i);
         if let Some((phi, covered)) = totals.get(&r) {
-            designs[i].space_phi = *phi;
-            designs[i].space_covered = *covered;
+            x.space_phi = *phi;
+            x.space_covered = *covered;
         }
     }
 }

@@ -2657,7 +2657,12 @@ impl CreaBimApp {
         if redo {
             self.run_command(ctx, Command::Redo, None);
         }
-        if delete {
+        if delete && self.plan.ufh_zone_pick.room.is_some() {
+            // a picked underfloor heating zone, not its room
+            if let Some(m) = crate::ufhzonedit::delete(&mut self.doc, &mut self.plan) {
+                self.status = m;
+            }
+        } else if delete {
             self.run_command(ctx, Command::Delete, None);
         }
         if extrude {
@@ -12150,6 +12155,12 @@ crate::props::row(ui, "File names", |ui| {
                         .map(|e| e.name.clone())
                         .unwrap_or_default();
                     ui.label(crate::i18n::tr(&format!("Tags {host}")));
+                    if crate::props::switch(ui, &mut t.back, "Text background")
+                        .on_hover_text(crate::i18n::t("Its texts cover what is drawn under them"))
+                        .changed()
+                    {
+                        label = "Tag text background";
+                    }
                     if crate::props::switch(ui, &mut t.material, "Reads the material")
                         .on_hover_text(crate::i18n::t("A material tag: its material, or its layers one line each, outside to inside"))
                         .changed()

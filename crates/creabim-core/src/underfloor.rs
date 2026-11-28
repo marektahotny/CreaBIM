@@ -1326,8 +1326,7 @@ pub fn square_less(poly: &[DVec2], holes: &[&[DVec2]]) -> Option<Vec<DVec2>> {
     while let Some(&start) = next.keys().next() {
         let mut ring = vec![];
         let mut at = start;
-        loop {
-            let Some(v) = next.get_mut(&at) else { break };
+        while let Some(v) = next.get_mut(&at) {
             let Some(to) = v.pop() else { break };
             if v.is_empty() {
                 next.remove(&at);
