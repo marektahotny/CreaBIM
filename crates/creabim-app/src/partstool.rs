@@ -669,20 +669,11 @@ pub fn tool_options(state: &PlanState) -> Vec<serde_json::Value> {
                     )
                 })
                 .collect())];
-            v.push(seg(s
-                .chimney
-                .system
-                .types()
-                .iter()
-                .map(|t| {
-                    opt(
-                        format!("part:chimney.flue.{}", t.flue),
-                        &format!("Ø{}", t.flue),
-                        s.chimney.flue == t.flue,
-                        "The flue of new chimneys, inner Ø in mm",
-                    )
-                })
-                .collect()));
+            v.push(json!({
+                "kind": "menu", "key": "chimney.type", "label": "Type",
+                "value": s.chimney.kind().short(),
+                "hint": "The flues of new chimneys, inner Ø in cm, and their ventilation shaft",
+            }));
             v.push(num(
                 "chimney_base",
                 "Base",
@@ -783,12 +774,15 @@ pub fn toggle_option(state: &mut PlanState, what: &str) {
     } else if let Some(x) = what.strip_prefix("chimney.system.") {
         use creabim_core::chimney::System;
         if let Some(sys) = System::ALL.into_iter().find(|y| format!("{y:?}") == x) {
-            s.chimney.system = sys;
-            s.chimney.flue = sys.of(s.chimney.flue).flue;
+            s.chimney = s.chimney.in_system(sys);
         }
-    } else if let Some(f) = what.strip_prefix("chimney.flue.") {
-        if let Ok(f) = f.parse::<u16>() {
-            s.chimney.flue = s.chimney.system.of(f).flue;
+    } else if let Some(i) = what.strip_prefix("chimney.type.") {
+        if let Some(t) = i
+            .parse::<usize>()
+            .ok()
+            .and_then(|i| s.chimney.system.types().get(i))
+        {
+            s.chimney = s.chimney.with(t);
         }
     } else if let Some(f) = what.strip_prefix("plant.") {
         if let Some(f) = PlantForm::ALL.into_iter().find(|x| x.label() == f) {
@@ -810,6 +804,36 @@ fn dec(v: f64) -> String {
     format!("{v}").replace('.', ",")
 }
 
+/// The group a chimney type is listed under.
+pub fn type_group(t: &creabim_core::chimney::Type) -> &'static str {
+    match (t.flue2 > 0, t.shaft.is_some()) {
+        (false, false) => "One flue",
+        (false, true) => "One flue with a shaft",
+        (true, false) => "Two flues",
+        (true, true) => "Two flues with a shaft",
+    }
+}
+
+/// The Chimney tool's Type menu: the system's types in their groups.
+pub fn chimney_type_items(state: &PlanState) -> Vec<crate::ui_model::Item> {
+    let c = state.parts.chimney;
+    let now = c.kind();
+    let mut out = vec![];
+    let mut group = "";
+    for (i, t) in c.system.types().iter().enumerate() {
+        let g = type_group(t);
+        if g != group {
+            group = g;
+            out.push(crate::ui_model::Item::Header(crate::i18n::t(g).to_string()));
+        }
+        out.push(
+            crate::ui_model::Item::new(format!("part:chimney.type.{i}"), t.short())
+                .checked(t == now),
+        );
+    }
+    out
+}
+
 /// A Schiedel chimney's system and flue, and the maker's sizes of it.
 /// True when the type changed (its outline and flue are redrawn).
 fn chimney_fields(ui: &mut egui::Ui, p: &mut Part) -> bool {
@@ -825,27 +849,32 @@ fn chimney_fields(ui: &mut egui::Ui, p: &mut Part) -> bool {
             .width(ui.available_width())
             .show_ui(ui, |ui| {
                 for x in System::ALL {
-                    if ui.selectable_value(&mut c.system, x, x.name()).changed() {
-                        c.flue = x.of(c.flue).flue;
+                    if ui.selectable_label(c.system == x, x.name()).clicked() && c.system != x {
+                        *c = c.in_system(x);
                         changed = true;
                     }
                 }
             });
     });
-    crate::props::row(ui, "Chimney flue", |ui| {
-        egui::ComboBox::from_id_salt("chimney_flue")
+    crate::props::row(ui, "Type", |ui| {
+        egui::ComboBox::from_id_salt("chimney_type")
             .icon(crate::props::combo_icon)
-            .selected_text(format!("Ø{} mm", c.flue))
+            .selected_text(c.kind().short())
             .width(ui.available_width())
+            .height(400.0)
             .show_ui(ui, |ui| {
+                let now = c.kind();
+                let mut group = "";
                 for t in c.system.types() {
-                    changed |= ui
-                        .selectable_value(
-                            &mut c.flue,
-                            t.flue,
-                            format!("Ø{} mm – {}", t.flue, t.name),
-                        )
-                        .changed();
+                    let g = type_group(t);
+                    if g != group {
+                        group = g;
+                        ui.label(egui::RichText::new(crate::i18n::t(g)).weak());
+                    }
+                    if ui.selectable_label(t == now, t.short()).clicked() && t != now {
+                        *c = c.with(t);
+                        changed = true;
+                    }
                 }
             });
     });
@@ -858,6 +887,19 @@ fn chimney_fields(ui: &mut egui::Ui, p: &mut Part) -> bool {
         }),
         c.size()
     )];
+    if let Some(sh) = t.shaft {
+        info.push(format!(
+            "{}: {}{} × {} mm",
+            crate::i18n::t("Shaft"),
+            if sh.count > 1 {
+                format!("{} × ", sh.count)
+            } else {
+                String::new()
+            },
+            dec(sh.across),
+            dec(sh.along)
+        ));
+    }
     if t.liner > 0.0 {
         info.push(format!(
             "{}: {} mm",
@@ -877,13 +919,6 @@ fn chimney_fields(ui: &mut egui::Ui, p: &mut Part) -> bool {
             "{}: {} kg/m",
             crate::i18n::t("Chimney weight"),
             dec(t.kg_m)
-        ));
-    } else if t.kg_block > 0.0 {
-        info.push(format!(
-            "{}: {} kg / {}",
-            crate::i18n::t("Chimney weight"),
-            dec(t.kg_block),
-            crate::i18n::t("block 33 cm")
         ));
     }
     weak(ui, info.join(" · "));

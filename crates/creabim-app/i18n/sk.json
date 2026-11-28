@@ -9068,7 +9068,6 @@
  "placed": "umiestnený",
  "Click on for the next chimney.": "Kliknite ďalej pre ďalší komín.",
  "The Schiedel system of new chimneys": "Systém Schiedel nových komínov",
- "The flue of new chimneys, inner Ø in mm": "Prieduch nových komínov, svetlý Ø v mm",
  "Height of new chimneys' undersides above the level": "Výška spodku nových komínov nad podlažím",
  "Height of new chimneys, from their underside to their top": "Výška nových komínov od spodku po vrch",
  "The turn of new chimneys' blocks in plan": "Pootočenie tvárnic nových komínov v pôdoryse",
@@ -9076,8 +9075,6 @@
  "Outer diameter": "Vonkajší priemer",
  "Liner wall": "Hrúbka vložky",
  "Chimney weight": "Hmotnosť",
- "block 33 cm": "tvárnica 33 cm",
- "chimney blocks": "tvárnic",
  "Place chimney": "Umiestniť komín",
  "Chimney type": "Typ komína",
  "on the outside": "zvonka",
@@ -9207,5 +9204,11 @@
   "area of transit pipes": "plocha prechodových potrubí",
   "pipes in a sleeve": "potrubie v ochrannej rúrke",
   "Connected by": "Napojenie cez",
-  "auto": "auto"
+  "auto": "auto",
+ "One flue": "Jednoprieduch",
+ "One flue with a shaft": "Jednoprieduch so šachtou",
+ "Two flues": "Dvojprieduch",
+ "Two flues with a shaft": "Dvojprieduch so šachtou",
+ "The flues of new chimneys, inner Ø in cm, and their ventilation shaft": "Prieduchy nových komínov, svetlý Ø v cm, a ich vetracia šachta",
+ "shaft": "šachta"
 }
