@@ -9207,5 +9207,6 @@
   "area of transit pipes": "plocha přechodových potrubí",
   "pipes in a sleeve": "potrubí v ochranné trubce",
   "Connected by": "Napojení přes",
-  "auto": "auto"
+  "auto": "auto",
+ "Insulation: the least thickness at λ 0.035 W/(m·K) by the pipe's inner diameter (vyhláška MH SR č. 14/2016 Z. z., príloha č. 1) · the product's least at its λ at 0 °C (príloha č. 2, α2 = 10 W/(m²·K)): its tube, inner diameter × wall, mm; ! not thick enough even at its thickest.": "Izolace: nejmenší tloušťka při λ 0,035 W/(m·K) podle vnitřního průměru trubky (vyhláška MH SR č. 14/2016 Z. z., příloha č. 1) · nejmenší tloušťka výrobku při jeho λ při 0 °C (příloha č. 2, α2 = 10 W/(m²·K)): jeho návlek, vnitřní průměr × tloušťka stěny, mm; ! nestačí ani nejtlustší vyráběný."
 }

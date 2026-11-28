@@ -192,8 +192,7 @@ fn heating_rows(model: &Model, rows: &mut Vec<Row>) {
             SystemKind::HeatingReturn => s.radiator_return_c,
             _ => continue,
         };
-        let air = creabim_services::heating::HeatSettings::default().room_c;
-        let Some(t) = s.insulation.tube(p.outer_mm, p.insulation(), medium, air) else {
+        let Some(t) = s.insulation.tube(p.outer_mm, p.insulation(), medium) else {
             continue;
         };
         let label = if t.code.is_empty() {

@@ -142,6 +142,9 @@ impl CreaBimApp {
     pub(super) fn heat_place_frame(&mut self, ctx: &egui::Context) {
         self.restore_order_step(ctx);
         let Some(mut p) = self.heat_place.take() else {
+            if self.parked.is_none() {
+                bring_back_left_over(ctx);
+            }
             return;
         };
         read_windows(ctx, &mut p.windows);
@@ -213,6 +216,21 @@ impl CreaBimApp {
         let l = self.restore_order.remove(0);
         ctx.move_to_top(l);
         ctx.request_repaint();
+    }
+}
+
+/// Windows left out of the way when the app closed while placing (egui
+/// keeps their move in its memory): back where they were.
+fn bring_back_left_over(ctx: &egui::Context) {
+    let away: Vec<LayerId> =
+        ctx.memory(|m| m.layer_ids().filter(|l| l.order == Order::Middle).collect());
+    for l in away {
+        if ctx
+            .layer_transform_to_global(l)
+            .is_some_and(|t| t.translation.x >= AWAY * 0.5)
+        {
+            ctx.set_transform_layer(l, TSTransform::IDENTITY);
+        }
     }
 }
 

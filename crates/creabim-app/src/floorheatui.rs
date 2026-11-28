@@ -817,7 +817,11 @@ fn manifold_ui(
             Col::num("Flow", "l/h"),
             Col::num("v", "m/s"),
             Col::num("R", "Pa/m"),
-            Col::num("Insulation", "mm"),
+            Col {
+                title: "Insulation",
+                unit: "mm",
+                num: false,
+            },
             Col::num("Length", "m"),
         ];
         // (role, pipe, code, flow l/h, v, R, insulation, length)
@@ -862,7 +866,19 @@ fn manifold_ui(
                 num(p.flow_ls * 3600.0, 0),
                 num(p.velocity, 2),
                 num(p.r_pa_m, 0),
-                num(p.insulation_mm, 0),
+                // the least by the vyhláška at λ 0,035, the product's least
+                // and its tube
+                match &p.tube {
+                    Some(tb) => format!(
+                        "{} · {}: {} × {}{}",
+                        num(p.insulation_mm, 0),
+                        num(tb.least_mm, 0),
+                        tb.inner_mm,
+                        tb.wall_mm,
+                        if tb.enough { "" } else { " !" }
+                    ),
+                    None => num(p.insulation_mm, 0),
+                },
                 len,
             ]
         };
@@ -901,6 +917,13 @@ fn manifold_ui(
                 }
             },
             None,
+        );
+        ui.label(
+            egui::RichText::new(t(
+                "Insulation: the least thickness at λ 0.035 W/(m·K) by the pipe's inner diameter (vyhláška MH SR č. 14/2016 Z. z., príloha č. 1) · the product's least at its λ at 0 °C (príloha č. 2, α2 = 10 W/(m²·K)): its tube, inner diameter × wall, mm; ! not thick enough even at its thickest.",
+            ))
+            .small()
+            .weak(),
         );
         // the circuits balanced: presetting, flow on the flowmeter
         if !m.circuits.is_empty() {
